@@ -1,27 +1,57 @@
-# Composer
+# ── Composer ──────────────────────────────────────────────────────────────────
 /vendor/
 composer.lock
 
-# Session files
-*.json
-!composer.json
+# ── Replit ────────────────────────────────────────────────────────────────────
+.replit
+replit.nix
+.upm/
+.cache/
+.local/
+.agents/
+replit.md
+
+# ── Sessions & credentials ────────────────────────────────────────────────────
+sessions/
 *.session
+.env
+.env.*
+!.env.example
 
+# ── Downloaded / uploaded files ───────────────────────────────────────────────
+downloads/
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp3
+*.mp4
+*.ogg
+*.opus
+*.pdf
+*.zip
 
-# IDE
-.idea/
-.vscode/
+# ── Test artifacts ────────────────────────────────────────────────────────────
+test_media_result.json
+/tmp/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+
+# ── Temp / swap ───────────────────────────────────────────────────────────────
+*.tmp
+*.temp
 *.swp
 *.swo
 *~
 
-# OS
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.code-workspace
+
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.temp
+desktop.ini

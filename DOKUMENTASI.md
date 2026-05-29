@@ -3636,14 +3636,19 @@ echo "Foto profil: " . implode(', ', $privasi['rules']) . "\n";
 **Return value `getPrivacy()`:**
 ```php
 [
-    'rules' => ['allow_all'],   // atau 'allow_contacts', 'disallow_all'
+    'rules' => ['allow_all'],              // satu rule: allow_all / allow_contacts / disallow_all
+    // atau — beberapa rule sekaligus (kombinasi yang disimpan Telegram):
+    'rules' => ['allow_contacts', 'disallow_all'],
 ]
 ```
+
+> `rules` adalah array — bisa berisi lebih dari satu elemen jika Telegram menyimpan kombinasi aturan (misalnya "izinkan kontak, blokir sisanya"). Untuk pengecekan sederhana, ambil `$result['rules'][0]`.
 
 ### 31.2 Mengubah Pengaturan Privasi
 
 ```php
 use XnoxsProto\TL\Functions\AccountGetPrivacyRequest;
+use XnoxsProto\TL\Functions\AccountSetPrivacyRequest;
 
 $account = $client->getAccount();
 
@@ -3670,36 +3675,55 @@ $account->setPrivacy(
     AccountGetPrivacyRequest::KEY_BIRTHDAY,
     ['allow_contacts']
 );
+
+// Bisa juga pakai konstanta integer (AccountSetPrivacyRequest::RULE_*)
+// sebagai alternatif dari string — keduanya diterima:
+$account->setPrivacy(
+    AccountGetPrivacyRequest::KEY_STATUS_TIMESTAMP,
+    [AccountSetPrivacyRequest::RULE_DISALLOW_ALL]   // 0xd66b66c9
+);
 ```
 
 **Signature:**
 ```php
 $account->getPrivacy(int $key): array
-$account->setPrivacy(int $key, array $rules): void
+$account->setPrivacy(int $key, array $rules): bool
 
 // $key   — salah satu konstanta KEY_* dari AccountGetPrivacyRequest
-// $rules — array berisi satu rule string: 'allow_all', 'allow_contacts', atau 'disallow_all'
+// $rules — array berisi rule: string ('allow_all'|'allow_contacts'|'disallow_all')
+//          atau integer RULE_* dari AccountSetPrivacyRequest (keduanya valid)
+// return — true jika berhasil (Telegram mengembalikan account.PrivacyRules yang valid)
 ```
+
+**Konstanta integer RULE_* (AccountSetPrivacyRequest):**
+
+| Konstanta | Nilai | Ekuivalen string |
+|-----------|-------|-----------------|
+| `AccountSetPrivacyRequest::RULE_ALLOW_ALL` | `0x184b35ce` | `'allow_all'` |
+| `AccountSetPrivacyRequest::RULE_ALLOW_CONTACTS` | `0x0d09e07b` | `'allow_contacts'` |
+| `AccountSetPrivacyRequest::RULE_DISALLOW_ALL` | `0xd66b66c9` | `'disallow_all'` |
 
 ### 31.3 Referensi Lengkap Key & Rules
 
 **Key privasi yang tersedia** (gunakan dari `AccountGetPrivacyRequest::KEY_*`):
 
-| Konstanta | Hex | Mengatur |
-|-----------|-----|----------|
-| `KEY_STATUS_TIMESTAMP` | `0x4f96cb18` | Kapan terakhir online |
-| `KEY_CHAT_INVITE` | `0xbdfb0426` | Siapa bisa undang ke grup |
-| `KEY_PHONE_CALL` | `0xfabadc5f` | Siapa bisa menelepon |
-| `KEY_PHONE_P2P` | `0xdb9e70d2` | P2P call (langsung/via server) |
-| `KEY_FORWARDS` | `0xa4dd4c08` | Atribusi saat pesan di-forward |
-| `KEY_PROFILE_PHOTO` | `0x5719bacc` | Foto profil |
-| `KEY_PHONE_NUMBER` | `0x0352dafa` | Nomor telepon |
-| `KEY_ADDED_BY_PHONE` | `0xd1219bdd` | Siapa bisa tambahkan via nomor |
-| `KEY_VOICE_MESSAGES` | `0xaee69d68` | Siapa bisa kirim voice note ke kamu |
-| `KEY_ABOUT` | `0x3823cc40` | Bio/deskripsi profil |
-| `KEY_BIRTHDAY` | `0xd65a11cc` | Tanggal ulang tahun |
+| Konstanta | Hex | Mengatur | Rules yang didukung |
+|-----------|-----|----------|---------------------|
+| `KEY_STATUS_TIMESTAMP` | `0x4f96cb18` | Kapan terakhir online | allow_all / allow_contacts / disallow_all |
+| `KEY_CHAT_INVITE` | `0xbdfb0426` | Siapa bisa undang ke grup | allow_all / allow_contacts / disallow_all |
+| `KEY_PHONE_CALL` | `0xfabadc5f` | Siapa bisa menelepon | allow_all / allow_contacts / disallow_all |
+| `KEY_PHONE_P2P` | `0xdb9e70d2` | P2P call (langsung/via server) | allow_all / allow_contacts / disallow_all |
+| `KEY_FORWARDS` | `0xa4dd4c08` | Atribusi saat pesan di-forward | allow_all / allow_contacts / disallow_all |
+| `KEY_PROFILE_PHOTO` | `0x5719bacc` | Foto profil | allow_all / allow_contacts / disallow_all |
+| `KEY_PHONE_NUMBER` | `0x0352dafa` | Nomor telepon | allow_all / allow_contacts / disallow_all |
+| `KEY_ADDED_BY_PHONE` | `0xd1219bdd` | Siapa bisa tambahkan via nomor | ⚠️ allow_all / allow_contacts **saja** |
+| `KEY_VOICE_MESSAGES` | `0xaee69d68` | Siapa bisa kirim voice note ke kamu | allow_all / allow_contacts / disallow_all |
+| `KEY_ABOUT` | `0x3823cc40` | Bio/deskripsi profil | allow_all / allow_contacts / disallow_all |
+| `KEY_BIRTHDAY` | `0xd65a11cc` | Tanggal ulang tahun | allow_all / allow_contacts / disallow_all |
 
-**Rules yang valid:**
+> **⚠️ Constraint `KEY_ADDED_BY_PHONE`:** Key ini hanya menerima `allow_all` dan `allow_contacts`. Mengirim `disallow_all` akan menghasilkan error `[400] PRIVACY_VALUE_INVALID`. Ini adalah batasan dari Telegram API, bukan bug library.
+
+**Rules yang valid (sebagai string):**
 
 | Rule string | Artinya |
 |-------------|---------|

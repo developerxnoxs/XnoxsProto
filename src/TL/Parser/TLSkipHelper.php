@@ -907,7 +907,22 @@ class TLSkipHelper
             case 0x9f84f49e: // messageMediaUnsupported — no fields
                 return ['type' => 'unsupported'];
 
-            case 0x4cf4d72d: // messageMediaDocument
+            case 0x52d8ccd9: // messageMediaDocument#52d8ccd9 (Layer 214+)
+                // flags:#  nopremium:3  spoiler:4  video:6  round:7  voice:8
+                //   document:0?Document  alt_documents:5?Vector<Document>
+                //   video_cover:9?Photo  video_timestamp:10?int  ttl_seconds:2?int
+                $flags   = $r->readInt();
+                $docInfo = ['type' => 'document', 'mime' => '', 'filename' => ''];
+                if ($flags & (1 << 0)) $docInfo = array_merge($docInfo, self::readDocumentInfo($r));
+                if ($flags & (1 << 5)) self::skipVector($r, fn($x) => self::skipDocument($x));
+                if ($flags & (1 << 9)) self::readPhotoInfo($r);  // video_cover:Photo (NEW — bit 9)
+                if ($flags & (1 << 10)) $r->readInt();            // video_timestamp (shifted to bit 10)
+                if ($flags & (1 << 2)) $r->readInt();             // ttl_seconds
+                return $docInfo;
+
+            case 0x4cf4d72d: // messageMediaDocument (legacy, pre-Layer 214)
+                // flags:#  document:0?Document  alt_documents:5?Vector<Document>
+                //   ttl_seconds:2?int  video_timestamp:9?int
                 $flags   = $r->readInt();
                 $docInfo = ['type' => 'document', 'mime' => '', 'filename' => ''];
                 if ($flags & (1 << 0)) $docInfo = array_merge($docInfo, self::readDocumentInfo($r));

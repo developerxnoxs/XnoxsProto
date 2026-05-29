@@ -3163,16 +3163,42 @@ $dl->downloadPhotoToMemory(int $photoId, int $accessHash, string $fileRef, strin
 > **`$total`** = ukuran file dalam bytes (hanya untuk dokumen; 0 untuk foto).  
 > **`$pct`** = persentase 0–100 (hanya untuk dokumen; 0 untuk foto).
 
-### 24.7 Perbaikan dari Referensi Telethon (Changelog)
+### 24.7 Perbaikan dari Referensi Telethon & TDLib (Changelog)
 
-Implementasi download mengacu pada [Telethon v1 downloads.py](https://github.com/LonamiWebs/Telethon/blob/v1/telethon/client/downloads.py). Perbaikan yang dilakukan berdasarkan referensi tersebut:
+Implementasi download mengacu pada [Telethon v1 downloads.py](https://github.com/LonamiWebs/Telethon/blob/v1/telethon/client/downloads.py) dan [TDLib telegram_api.tl](https://github.com/tdlib/td/blob/master/td/generate/scheme/telegram_api.tl). Perbaikan yang dilakukan:
 
-| # | Bug / Keterbatasan | Perbaikan |
-|---|-------------------|-----------|
-| 1 | `getHistory()` menghasilkan flat array, tapi docs menulis `$result['messages']` | Dikoreksi ke `foreach ($messages as $msg)` |
-| 2 | Progress callback selalu kirim `$total=0, $pct=0` | Untuk dokumen: `$total` = ukuran nyata, `$pct` = persen nyata 0–100 |
-| 3 | `FILE_REFERENCE_EXPIRED` menyebabkan crash tanpa recovery | Auto-refresh: re-fetch pesan asli, ambil file_reference baru, lanjutkan download (mengikuti Telethon) |
-| 4 | `FILE_MIGRATE_X` hanya di-handle sekali | Sudah benar (tetap di loop, sender diganti setiap terjadi migrasi) |
+| # | File | Bug / Keterbatasan | Perbaikan |
+|---|------|-------------------|-----------|
+| 1 | `DOKUMENTASI.md` | Dokumentasi menulis `$result['messages']` padahal `getHistory()` return flat array | Dikoreksi ke `foreach ($messages as $msg)` |
+| 2 | `FileDownloader.php` | Progress callback selalu kirim `$total=0, $pct=0` | Untuk dokumen: `$total` = ukuran nyata dari `media['size']`, `$pct` = persen nyata 0–100 |
+| 3 | `FileDownloader.php` | `FILE_REFERENCE_EXPIRED` crash tanpa recovery | Auto-refresh: re-fetch pesan asli, ambil file_reference baru, lanjutkan download |
+| 4 | `TLSkipHelper.php` | Constructor `messageMediaDocument#52d8ccd9` (Layer 214+) tidak dikenal → default case hanya baca 4 byte constructor, **tidak mengkonsumsi sisa data** → stream misaligned → semua pesan berikutnya terbaca sebagai `type=empty` dengan ID acak | Tambah handler `0x52d8ccd9` dengan parsing flags lengkap: `document:0?Document`, `alt_documents:5?Vector<Document>`, `video_cover:9?Photo` *(baru di Layer 214)*, `video_timestamp:10?int` *(digeser dari bit 9)*, `ttl_seconds:2?int` |
+| 5 | `UploadGetFileRequest.php` | Constructor `upload.getFile` salah: `0xb15a9afc` → server return `INPUT_REQUEST_TOO_LONG [400]` | Dikoreksi ke `0xbe5335be` sesuai TDLib dan Pyrogram. Constructor lama valid untuk layer dengan `offset:int32`; constructor baru berlaku sejak `offset` diubah ke `int64 (long)` |
+
+**Detail bug #4 — `messageMediaDocument#52d8ccd9` (Layer 214+):**
+
+Layer 214 mengubah constructor `messageMediaDocument` dari `0x4cf4d72d` ke `0x52d8ccd9` dengan menambahkan field baru:
+
+```
+// Lama (0x4cf4d72d, pre-Layer 214):
+messageMediaDocument flags:# nopremium:3 spoiler:4 video:6 round:7 voice:8
+  document:0?Document  alt_documents:5?Vector<Document>
+  video_timestamp:9?int   ← bit 9
+  ttl_seconds:2?int
+
+// Baru (0x52d8ccd9, Layer 214+):
+messageMediaDocument flags:# nopremium:3 spoiler:4 video:6 round:7 voice:8
+  document:0?Document  alt_documents:5?Vector<Document>
+  video_cover:9?Photo  ← bit 9 sekarang = Photo (bukan int)
+  video_timestamp:10?int  ← digeser ke bit 10
+  ttl_seconds:2?int
+```
+
+Gejala: semua pesan dengan dokumen/audio/video tampak sebagai `type=empty` dengan ID sangat besar (garbage), karena stream corrupt setelah satu pesan dengan media baru diparsing setengah jalan.
+
+**Detail bug #5 — `upload.getFile` constructor salah:**
+
+Constructor `0xb15a9afc` adalah versi lama ketika `offset` bertipe `int32`. Setelah diubah ke `int64 (long)`, CRC32 definisi berubah menjadi `0xbe5335be`. Telegram server menolak request dengan constructor lama dan mengembalikan `INPUT_REQUEST_TOO_LONG [400]`. Referensi: [TDLib telegram_api.tl](https://github.com/tdlib/td/blob/master/td/generate/scheme/telegram_api.tl).
 
 **Catatan implementasi `FILE_REFERENCE_EXPIRED` (mengacu Telethon):**
 - Hanya berlaku untuk dokumen (`locationType = 1`, `thumbSize = ''`)
@@ -3180,6 +3206,28 @@ Implementasi download mengacu pada [Telethon v1 downloads.py](https://github.com
 - Re-fetch menggunakan `getHistory()` dengan window `[msgId-1, msgId+1]`
 - Hanya coba refresh sekali untuk menghindari infinite loop
 - Jika refresh gagal (peer tidak dikenal, pesan dihapus, dsb.), lempar error deskriptif
+
+### 24.8 Hasil Test Nyata (test_media.php)
+
+Test dijalankan pada akun nyata di Saved Messages. Semua 8/8 pass:
+
+```
+Upload & Download Media Test — XnoxsProto
+
+[1.1] sendPhoto (JPG inline)         ✅  msg_id=312
+[1.2] sendDocument (TXT)             ✅  msg_id=313
+[1.3] sendAudio (MP3)                ✅  msg_id=314
+[1.4] sendFile auto-detect JPG→foto  ✅  msg_id=315
+[1.5] sendFile forceDocument=true    ✅  msg_id=316
+
+[2.1] Download photo  (msg #312)     ✅  2,505 bytes  (0.08s)
+[2.2] Download document (msg #313)   ✅     47 bytes  (0.25s)
+[2.3] Download audio  (msg #314)     ✅    110 bytes  (0.08s)
+
+Ringkasan: 8/8 PASS
+```
+
+DC media = 5, session DC = 5 (tidak perlu DC migration). File tersimpan di `downloads/`.
 
 ---
 

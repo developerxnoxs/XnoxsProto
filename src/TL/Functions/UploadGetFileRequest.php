@@ -6,12 +6,15 @@ use XnoxsProto\TL\TLObject;
 use XnoxsProto\TL\BinaryWriter;
 
 /**
- * upload.getFile#b15a9afc flags:# precise:flags.0?true cdn_supported:flags.1?true
+ * upload.getFile#be5335be flags:# precise:flags.0?true cdn_supported:flags.1?true
  *   location:InputFileLocation offset:long limit:int = upload.File
+ *
+ * NOTE: Constructor changed from 0xb15a9afc to 0xbe5335be when offset type
+ * changed from int32 to int64 (long). TDLib/Pyrogram both use 0xbe5335be.
  */
 class UploadGetFileRequest extends TLObject
 {
-    const CONSTRUCTOR = 0xb15a9afc;
+    const CONSTRUCTOR = 0xbe5335be;
 
     private int    $locationType;
     private int    $id;

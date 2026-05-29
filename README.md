@@ -1,32 +1,32 @@
 # XnoxsProto
 
-> Pure PHP implementation of Telegram's MTProto protocol — no wrappers, no third-party API clients, communicates directly with Telegram servers.
+> Implementasi murni PHP dari protokol MTProto Telegram — tanpa wrapper, tanpa klien API pihak ketiga, berkomunikasi langsung dengan server Telegram.
 
 ![PHP](https://img.shields.io/badge/PHP-8.2+-blue?logo=php)
 ![Layer](https://img.shields.io/badge/MTProto_Layer-214-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Active_Development-orange)
+![Lisensi](https://img.shields.io/badge/Lisensi-MIT-green)
+![Status](https://img.shields.io/badge/Status-Aktif_Dikembangkan-orange)
 
 ---
 
-## Overview
+## Tentang Proyek
 
-XnoxsProto is a ground-up PHP library implementing the full [Telegram MTProto protocol](https://core.telegram.org/mtproto). It handles everything from the DH key exchange and AES-IGE encryption layer up to high-level API calls — all in pure PHP, with no Composer dependencies beyond PHP's built-in extensions.
+XnoxsProto adalah library PHP yang mengimplementasikan protokol [MTProto Telegram](https://core.telegram.org/mtproto) dari nol. Library ini menangani segalanya mulai dari pertukaran kunci DH dan enkripsi AES-IGE hingga panggilan API tingkat tinggi — semuanya dalam PHP murni, tanpa dependensi Composer selain ekstensi bawaan PHP.
 
-**Target use case:** automation scripts, bots, user clients, and Telegram tooling written in PHP.
+**Target pengguna:** skrip otomasi, bot, klien pengguna, dan tooling Telegram yang ditulis dalam PHP.
 
-> **Development status:** Core features are working and tested against real Telegram servers (Layer 214). The library is actively developed. APIs may change between versions.
-
----
-
-## Requirements
-
-- PHP **8.2** or later
-- Extensions: `ext-gmp`, `ext-openssl`, `ext-mbstring`, `ext-json`, `ext-curl`
+> **Status pengembangan:** Fitur inti sudah berfungsi dan telah diuji langsung terhadap server Telegram nyata (Layer 214). Library ini masih aktif dikembangkan. API dapat berubah antar versi.
 
 ---
 
-## Installation
+## Persyaratan
+
+- PHP **8.2** atau lebih baru
+- Ekstensi: `ext-gmp`, `ext-openssl`, `ext-mbstring`, `ext-json`, `ext-curl`
+
+---
+
+## Instalasi
 
 ```bash
 git clone https://github.com/yourusername/xnoxsproto.git
@@ -34,19 +34,19 @@ cd xnoxsproto
 composer install
 ```
 
-Get API credentials from **https://my.telegram.org/apps**
+Dapatkan kredensial API di **https://my.telegram.org/apps**
 
 ---
 
-## Quick Start
+## Mulai Cepat
 
-### Login (phone number)
+### Login (nomor telepon)
 
 ```bash
 php interactive_login.php
 ```
 
-### Code example
+### Contoh kode
 
 ```php
 <?php
@@ -56,147 +56,147 @@ use XnoxsProto\Client\TelegramClient;
 
 $client = TelegramClient::create(YOUR_API_ID, 'YOUR_API_HASH');
 
-// First run: triggers interactive phone/OTP login
+// Pertama kali: meminta login via telepon & kode OTP
 $client->start('+628123456789');
 
-// After login, session is saved automatically
+// Setelah login, sesi tersimpan otomatis
 $me = $client->getMe();
-echo "Logged in as: " . $me['first_name'] . " (ID: " . $me['id'] . ")\n";
+echo "Login sebagai: " . $me['first_name'] . " (ID: " . $me['id'] . ")\n";
 
-$client->sendMessage('@username', 'Hello from XnoxsProto!');
+$client->sendMessage('@username', 'Halo dari XnoxsProto!');
 $client->disconnect();
 ```
 
-### Reconnecting with saved session
+### Koneksi ulang dengan sesi tersimpan
 
 ```php
-$client = TelegramClient::create(YOUR_API_ID, 'YOUR_API_HASH', 'sessions/my.session');
+$client = TelegramClient::create(YOUR_API_ID, 'YOUR_API_HASH', 'sessions/saya.session');
 $client->connect();
 
-// Session is restored — no login needed
-$client->sendMessage('me', 'Still here.');
+// Sesi dipulihkan — tidak perlu login ulang
+$client->sendMessage('me', 'Masih di sini.');
 $client->disconnect();
 ```
 
 ---
 
-## Feature Overview
+## Ringkasan Fitur
 
-### Protocol Layer
-| Feature | Status |
-|---------|--------|
-| MTProto Layer 214 (latest) | ✅ |
-| TCP Abridged transport | ✅ |
-| Full DH key exchange (Authenticator) | ✅ |
-| AES-IGE encryption / decryption | ✅ |
-| RSA key exchange | ✅ |
+### Lapisan Protokol
+| Fitur | Status |
+|-------|--------|
+| MTProto Layer 214 (terbaru) | ✅ |
+| Transport TCP Abridged | ✅ |
+| Pertukaran kunci DH penuh (Authenticator) | ✅ |
+| Enkripsi / dekripsi AES-IGE | ✅ |
+| Pertukaran kunci RSA | ✅ |
 | SRP (Secure Remote Password, 2FA) | ✅ |
-| Layer auto-detection at connect | ✅ |
-| Auto datacenter migration | ✅ |
-| `bad_server_salt` auto-retry | ✅ |
-| `msg_container` multi-message handling | ✅ |
-| gzip-compressed responses | ✅ |
-| SOCKS5 proxy support | ✅ |
+| Deteksi layer otomatis saat connect | ✅ |
+| Migrasi datacenter otomatis | ✅ |
+| Auto-retry `bad_server_salt` | ✅ |
+| Penanganan multi-pesan `msg_container` | ✅ |
+| Respons terkompresi gzip | ✅ |
+| Dukungan proxy SOCKS5 | ✅ |
 
-### Authentication
-| Feature | Status |
-|---------|--------|
-| Phone number login (OTP) | ✅ |
-| 2FA / cloud password (SRP) | ✅ |
-| Bot token login | ✅ |
-| Session persistence (file / memory) | ✅ |
-| QR code login | 🔜 |
+### Autentikasi
+| Fitur | Status |
+|-------|--------|
+| Login nomor telepon (OTP) | ✅ |
+| Kata sandi cloud 2FA (SRP) | ✅ |
+| Login token bot | ✅ |
+| Persistensi sesi (file / memori) | ✅ |
+| Login QR code | 🔜 |
 
-### Messaging
-| Feature | Status |
-|---------|--------|
-| Send text messages | ✅ |
-| Edit messages | ✅ |
-| Delete messages (with revoke) | ✅ |
-| Forward messages | ✅ |
-| Reply to messages | ✅ |
-| Send polls | ✅ |
-| Pin / unpin messages | ✅ |
-| Get chat history | ✅ |
-| Search messages (in-chat & global) | ✅ |
-| Click inline / keyboard buttons | ✅ |
-| Start bot with `/start` parameter | ✅ |
-| Reactions | 🔜 |
+### Pesan
+| Fitur | Status |
+|-------|--------|
+| Kirim pesan teks | ✅ |
+| Edit pesan | ✅ |
+| Hapus pesan (dengan revoke) | ✅ |
+| Forward pesan | ✅ |
+| Balas pesan | ✅ |
+| Kirim polling | ✅ |
+| Pin / unpin pesan | ✅ |
+| Ambil riwayat chat | ✅ |
+| Cari pesan (dalam chat & global) | ✅ |
+| Klik tombol inline / keyboard | ✅ |
+| Mulai bot dengan parameter `/start` | ✅ |
+| Reaksi pesan | 🔜 |
 
 ### Media
-| Feature | Status |
-|---------|--------|
-| Send photo (inline / document) | ✅ |
-| Send video | ✅ |
-| Send audio / MP3 | ✅ |
-| Send voice message | ✅ |
-| Send document (any file type) | ✅ |
-| Auto-detect media type | ✅ |
-| Chunked upload (512 KB chunks) | ✅ |
-| Big file upload (> 10 MB) | ✅ |
-| Download photo / document / audio | ✅ |
-| Download with progress callback | ✅ |
-| DC migration during download | ✅ |
-| `FILE_REFERENCE_EXPIRED` auto-refresh | ✅ |
-| Sticker / GIF send | 🔜 |
+| Fitur | Status |
+|-------|--------|
+| Kirim foto (inline / dokumen) | ✅ |
+| Kirim video | ✅ |
+| Kirim audio / MP3 | ✅ |
+| Kirim pesan suara | ✅ |
+| Kirim dokumen (semua tipe file) | ✅ |
+| Deteksi tipe media otomatis | ✅ |
+| Upload bertahap (512 KB per chunk) | ✅ |
+| Upload file besar (> 10 MB) | ✅ |
+| Download foto / dokumen / audio | ✅ |
+| Download dengan callback progres | ✅ |
+| Migrasi DC saat download | ✅ |
+| Auto-refresh `FILE_REFERENCE_EXPIRED` | ✅ |
+| Kirim stiker / GIF | 🔜 |
 
-### Contacts & Dialogs
-| Feature | Status |
-|---------|--------|
-| Get dialogs (all chats / pagination) | ✅ |
-| Get contacts | ✅ |
+### Kontak & Dialog
+| Fitur | Status |
+|-------|--------|
+| Ambil semua dialog (dengan paginasi) | ✅ |
+| Ambil daftar kontak | ✅ |
 | Resolve username / peer | ✅ |
-| Get full user info | ✅ |
-| Get full chat / channel info | ✅ |
+| Info lengkap pengguna | ✅ |
+| Info lengkap chat / channel | ✅ |
 
-### Groups & Channels
-| Feature | Status |
-|---------|--------|
-| Create basic group | ✅ |
-| Create supergroup / channel | ✅ |
-| Delete group / channel | ✅ |
-| Upgrade basic group → supergroup | ✅ |
-| Edit title / description | ✅ |
-| Add users to group | ✅ |
-| Invite users to channel | ✅ |
-| Join / leave channel | ✅ |
-| Get channel members | ✅ |
-| Promote / demote admin | ✅ |
-| Ban / unban / kick users | ✅ |
-| Restrict / mute / read-only users | ✅ |
+### Grup & Channel
+| Fitur | Status |
+|-------|--------|
+| Buat grup biasa | ✅ |
+| Buat supergroup / channel | ✅ |
+| Hapus grup / channel | ✅ |
+| Upgrade grup biasa → supergroup | ✅ |
+| Edit judul / deskripsi | ✅ |
+| Tambah anggota ke grup | ✅ |
+| Undang ke channel | ✅ |
+| Gabung / keluar channel | ✅ |
+| Ambil daftar anggota channel | ✅ |
+| Promosi / turunkan admin | ✅ |
+| Ban / unban / kick anggota | ✅ |
+| Restrict / bisu / read-only anggota | ✅ |
 | Slow mode | ✅ |
-| Export invite link | ✅ |
-| Default member permissions | ✅ |
-| Toggle signatures (channel) | ✅ |
-| Toggle join-to-send | ✅ |
-| Toggle join-approval | ✅ |
-| Get channels where you are admin | ✅ |
+| Export link undangan | ✅ |
+| Atur izin default anggota | ✅ |
+| Tanda tangan admin di channel | ✅ |
+| Wajib join sebelum kirim pesan | ✅ |
+| Wajib persetujuan admin untuk join | ✅ |
+| Ambil channel yang dikelola admin | ✅ |
 
-### Account
-| Feature | Status |
-|---------|--------|
-| Update profile (name, bio) | ✅ |
+### Akun
+| Fitur | Status |
+|-------|--------|
+| Update profil (nama, bio) | ✅ |
 | Update username | ✅ |
-| Upload profile photo | ✅ |
-| Get active sessions (authorizations) | ✅ |
-| Terminate session by hash | ✅ |
-| Terminate all other sessions | ✅ |
-| Get / set privacy rules | ✅ |
+| Upload foto profil | ✅ |
+| Lihat sesi aktif (otorisasi) | ✅ |
+| Hapus sesi berdasarkan hash | ✅ |
+| Keluar dari semua sesi lain | ✅ |
+| Baca / ubah pengaturan privasi | ✅ |
 
-### Event Handling
-| Feature | Status |
-|---------|--------|
-| `on(NewMessageFilter, callable)` — filtered handler | ✅ |
-| `onUpdate(callable)` — raw update handler | ✅ |
-| `runUntilDisconnected()` — event loop | ✅ |
-| `pollOnce()` — single poll tick | ✅ |
-| Filter by peer / keyword / media type | ✅ |
+### Penanganan Update / Event
+| Fitur | Status |
+|-------|--------|
+| `on(NewMessageFilter, callable)` — handler dengan filter | ✅ |
+| `onUpdate(callable)` — handler update mentah | ✅ |
+| `runUntilDisconnected()` — loop event | ✅ |
+| `pollOnce()` — satu tick polling | ✅ |
+| Filter berdasarkan peer / kata kunci / tipe media | ✅ |
 
 ---
 
-## Code Examples
+## Contoh Kode
 
-### Download media from chat history
+### Download media dari riwayat chat
 
 ```php
 $messages = $client->getHistory('@channel', 20);
@@ -211,11 +211,11 @@ foreach ($messages as $msg) {
         echo "\r  $pct% — " . number_format($recv) . "/" . number_format($total) . " bytes";
     });
 
-    echo "\nSaved: $path\n";
+    echo "\nTersimpan: $path\n";
 }
 ```
 
-### Event-driven message listener
+### Listener pesan berbasis event
 
 ```php
 use XnoxsProto\Events\NewMessage;
@@ -232,143 +232,143 @@ $client->on(NewMessage::filter(fromUsers: ['@alice', '@bob']), function ($event,
 $client->runUntilDisconnected();
 ```
 
-### Group / channel management
+### Manajemen grup / channel
 
 ```php
-// Create a supergroup
-$group = $client->createChannel('My Group', 'A test group', megagroup: true);
+// Buat supergroup baru
+$group = $client->createChannel('Grup Saya', 'Deskripsi grup', megagroup: true);
 
-// Invite users
+// Undang anggota
 $client->inviteToChannel($group['id'], ['@alice', '@bob']);
 
-// Promote an admin
+// Promosi admin
 $client->promoteAdmin($group['id'], '@alice', canDeleteMessages: true, canBanUsers: true);
 
-// Export invite link
+// Export link undangan
 $link = $client->exportInviteLink($group['id']);
 echo $link['link'];
 ```
 
-### SOCKS5 proxy
+### Proxy SOCKS5
 
 ```php
-$client->setProxy('127.0.0.1', 1080);          // without auth
-$client->setProxy('127.0.0.1', 1080, 'user', 'pass');  // with auth
+$client->setProxy('127.0.0.1', 1080);                       // tanpa autentikasi
+$client->setProxy('127.0.0.1', 1080, 'user', 'password');   // dengan autentikasi
 $client->connect();
 ```
 
-### Bot login
+### Login sebagai bot
 
 ```php
-$client->getAuth()->loginAsBot('YOUR_BOT_TOKEN:HERE');
+$client->getAuth()->loginAsBot('TOKEN_BOT_KAMU:DI_SINI');
 $me = $client->getMe();
 echo "Bot: @" . $me['username'];
 ```
 
 ---
 
-## Architecture
+## Arsitektur
 
 ```
 src/
 ├── Client/
-│   ├── TelegramClient.php     # Main entry point — all high-level methods
-│   ├── Auth.php               # Login, 2FA, bot auth, logout
-│   ├── Messages.php           # Messaging, history, search, media send
-│   ├── Account.php            # Profile, privacy, sessions
-│   └── FileDownloader.php     # Chunked download, DC migration
+│   ├── TelegramClient.php     # Titik masuk utama — semua metode tingkat tinggi
+│   ├── Auth.php               # Login, 2FA, login bot, logout
+│   ├── Messages.php           # Pesan, riwayat, pencarian, kirim media
+│   ├── Account.php            # Profil, privasi, manajemen sesi
+│   └── FileDownloader.php     # Download bertahap, migrasi DC
 │
 ├── Network/
-│   ├── Connection.php         # Raw TCP socket (IPv4/IPv6)
-│   ├── Socks5Connection.php   # SOCKS5 proxy tunnel
-│   ├── TcpAbridged.php        # MTProto TCP Abridged framing
-│   ├── MTProtoPlainSender.php # Unencrypted sender (auth handshake)
-│   ├── MTProtoSender.php      # Encrypted sender (main session)
-│   ├── Authenticator.php      # DH key exchange (Steps 1–9)
-│   └── LayerDetector.php      # Auto-detect API layer at connect
+│   ├── Connection.php         # Soket TCP mentah (IPv4/IPv6)
+│   ├── Socks5Connection.php   # Terowongan proxy SOCKS5
+│   ├── TcpAbridged.php        # Framing TCP Abridged MTProto
+│   ├── MTProtoPlainSender.php # Pengirim tidak terenkripsi (handshake auth)
+│   ├── MTProtoSender.php      # Pengirim terenkripsi (sesi utama)
+│   ├── Authenticator.php      # Pertukaran kunci DH (Langkah 1–9)
+│   └── LayerDetector.php      # Deteksi layer API otomatis saat connect
 │
 ├── Crypto/
-│   ├── AES.php                # AES-IGE encryption/decryption
-│   ├── RSA.php                # RSA (PKCS#1 v1.5) for DH handshake
-│   ├── AuthKey.php            # Auth key container + key ID
-│   └── SRP.php                # SRP-2048 for 2FA cloud password
+│   ├── AES.php                # Enkripsi/dekripsi AES-IGE
+│   ├── RSA.php                # RSA (PKCS#1 v1.5) untuk handshake DH
+│   ├── AuthKey.php            # Wadah auth key + key ID
+│   └── SRP.php                # SRP-2048 untuk kata sandi cloud 2FA
 │
 ├── TL/
-│   ├── BinaryReader.php       # TL binary deserializer
-│   ├── BinaryWriter.php       # TL binary serializer
-│   ├── TLObject.php           # Base TL type
-│   ├── Types/                 # TL type classes (User, Chat, Message …)
-│   ├── Functions/             # TL method classes (SendMessage, GetHistory …)
+│   ├── BinaryReader.php       # Deserializer biner TL
+│   ├── BinaryWriter.php       # Serializer biner TL
+│   ├── TLObject.php           # Tipe dasar TL
+│   ├── Types/                 # Kelas tipe TL (User, Chat, Message …)
+│   ├── Functions/             # Kelas metode TL (SendMessage, GetHistory …)
 │   └── Parser/
-│       └── TLSkipHelper.php   # Skip/read arbitrary TL objects by constructor
+│       └── TLSkipHelper.php   # Baca/lewati objek TL sembarang berdasarkan constructor
 │
 ├── Sessions/
-│   ├── AbstractSession.php    # Session interface
-│   ├── FileSession.php        # Persistent file-based session (.session)
-│   └── MemorySession.php      # In-memory session (no persistence)
+│   ├── AbstractSession.php    # Antarmuka sesi
+│   ├── FileSession.php        # Sesi berbasis file persisten (.session)
+│   └── MemorySession.php      # Sesi dalam memori (tanpa persistensi)
 │
 ├── Upload/
-│   └── FileUploader.php       # Chunked upload (small + big file mode)
+│   └── FileUploader.php       # Upload bertahap (mode file kecil & besar)
 │
 ├── Events/
-│   ├── NewMessage.php         # Typed new-message event + filter builder
-│   ├── NewMessageEvent.php    # Event wrapper
-│   └── RawUpdateEvent.php     # Raw TL update wrapper
+│   ├── NewMessage.php         # Event pesan baru bertipe + pembangun filter
+│   ├── NewMessageEvent.php    # Pembungkus event
+│   └── RawUpdateEvent.php     # Pembungkus update TL mentah
 │
 ├── Helpers/
-│   └── Helpers.php            # Utility functions
+│   └── Helpers.php            # Fungsi utilitas
 │
 └── Exceptions/
-    └── RPCException.php       # Telegram RPC error ($errorCode, $errorMessage)
+    └── RPCException.php       # Error RPC Telegram ($errorCode, $errorMessage)
 ```
 
 ---
 
-## Session Files
+## File Sesi
 
-Sessions are saved to `sessions/<phone>.session` by default (configurable). The file stores the auth key, server salt, DC info, and negotiated API layer — so subsequent runs connect instantly without re-authenticating.
+Sesi disimpan ke `sessions/<nomor_telepon>.session` secara default (dapat dikonfigurasi). File ini menyimpan auth key, server salt, info DC, dan layer API yang dinegosiasikan — sehingga koneksi berikutnya langsung tersambung tanpa autentikasi ulang.
 
 ```
 sessions/
-└── 628123456789.session    ← binary session file
+└── 628123456789.session    ← file sesi biner
 ```
 
 ---
 
-## Documentation
+## Dokumentasi
 
-Full Indonesian documentation (method signatures, examples, protocol notes): [`DOKUMENTASI.md`](DOKUMENTASI.md)
+Dokumentasi lengkap dalam Bahasa Indonesia (tanda tangan metode, contoh, catatan protokol): [`DOKUMENTASI.md`](DOKUMENTASI.md)
 
-Topics covered:
-- MTProto protocol internals
-- All method signatures with parameters and return types
-- Media upload & download (including DC migration, `FILE_REFERENCE_EXPIRED` handling)
-- Event handling patterns
-- Group/channel management cookbook
-- Privacy settings reference
-- Changelog & known Layer 214 constructor differences vs older layers
-
----
-
-## Known Limitations
-
-- No multi-account concurrency (one session per process)
-- No MTProto v1 (old DC) support
-- No CDN file download (redirected to CDN DC)
-- No end-to-end encrypted (secret) chats
-- No MTProto over WebSocket
+Topik yang dibahas:
+- Internal protokol MTProto
+- Semua tanda tangan metode beserta parameter dan tipe kembalian
+- Upload & download media (termasuk migrasi DC, penanganan `FILE_REFERENCE_EXPIRED`)
+- Pola penanganan event
+- Panduan manajemen grup/channel
+- Referensi pengaturan privasi
+- Changelog & perbedaan constructor Layer 214 vs layer lama
 
 ---
 
-## References
+## Keterbatasan yang Diketahui
+
+- Tidak ada konkurensi multi-akun (satu sesi per proses)
+- Tidak mendukung MTProto v1 (DC lama)
+- Tidak ada download file CDN (redirect ke DC CDN)
+- Tidak mendukung chat rahasia (end-to-end encrypted)
+- Tidak ada MTProto over WebSocket
+
+---
+
+## Referensi
 
 - [Telegram MTProto](https://core.telegram.org/mtproto)
-- [Telegram API methods](https://core.telegram.org/methods)
-- [TDLib schema](https://github.com/tdlib/td/blob/master/td/generate/scheme/telegram_api.tl)
-- [Telethon](https://github.com/LonamiWebs/Telethon) — reference implementation used for protocol cross-checking
+- [Metode API Telegram](https://core.telegram.org/methods)
+- [Skema TDLib](https://github.com/tdlib/td/blob/master/td/generate/scheme/telegram_api.tl)
+- [Telethon](https://github.com/LonamiWebs/Telethon) — implementasi referensi untuk cross-check protokol
 
 ---
 
-## License
+## Lisensi
 
-MIT — see [LICENSE](LICENSE)
+MIT — lihat [LICENSE](LICENSE)

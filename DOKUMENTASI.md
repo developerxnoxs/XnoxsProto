@@ -38,6 +38,7 @@
 29. [Raw Update Handler (onUpdate)](#29-raw-update-handler-onupdate)
 30. [Catatan Kompatibilitas Layer 214](#30-catatan-kompatibilitas-layer-214)
 31. [Pengaturan Privasi (Account Privacy)](#31-pengaturan-privasi-account-privacy)
+32. [Manajemen Grup, Supergroup & Channel](#32-manajemen-grup-supergroup--channel) — createChannel, deleteChat, editChatTitle, toggleSignatures, toggleSlowMode, setDefaultPermissions, toggleJoinToSend, toggleJoinRequest, exportInviteLink
 
 ---
 
@@ -2426,12 +2427,24 @@ $client->unbanUser('@supergroup', '@user');
 ### 18.10 Undang User ke Supergroup / Channel
 
 ```php
-// Undang satu user (perlu user ada di kontak atau pernah berinteraksi)
-$result = $client->inviteToChannel('@supergroup', ['@user1', '@user2']);
-// Returns: ['invited' => true, 'count' => 2]
+// Undang satu user ke supergroup
+$result = $client->inviteToChannel('@supergroup', '@user1');
+
+// Undang beberapa user sekaligus
+$result = $client->inviteToChannel('@supergroup', ['@user1', '@user2', 123456789]);
+
+// Returns: ['invited' => true, 'channel_id' => int, 'user_ids' => [int, ...]]
 ```
 
-> Jika muncul error `USER_NOT_MUTUAL_CONTACT`, artinya user tersebut membatasi siapa yang bisa menambahkan mereka ke grup. Ini batasan Telegram, bukan bug library.
+> **Keterbatasan Telegram API:**
+>
+> | Kondisi | Error |
+> |---------|-------|
+> | Mengundang bot ke **channel broadcast** | `[400] USER_BOT` — bot tidak bisa diundang ke broadcast channel via API ini |
+> | User membatasi siapa yang bisa menambahkan mereka | `[400] USER_NOT_MUTUAL_CONTACT` |
+>
+> Bot **bisa** diundang ke **supergroup** tanpa masalah. Hanya broadcast channel yang memblokirnya.
+> Untuk menambahkan bot sebagai admin channel broadcast, promosikan langsung via `promoteAdmin()` — bot tidak perlu jadi anggota biasa terlebih dahulu.
 
 ---
 
@@ -3805,8 +3818,18 @@ createChannel(
 
 **Return:**
 ```php
-['created' => true, 'title' => '...', 'about' => '...', 'megagroup' => true, 'forum' => false]
+[
+    'created'     => true,
+    'title'       => 'Nama Supergroup',
+    'about'       => 'Deskripsi opsional',
+    'megagroup'   => true,
+    'forum'       => false,
+    'channel_id'  => 3991443490,   // ID channel/supergroup yang baru dibuat (langsung bisa dipakai)
+    'access_hash' => -1234567890,  // Access hash — tersimpan otomatis di peerCache
+]
 ```
+
+> **Catatan:** `channel_id` dan `access_hash` langsung tersedia di return value dan sudah otomatis disimpan ke `peerCache`. Kamu bisa langsung pakai `$result['channel_id']` untuk operasi berikutnya tanpa perlu `getDialogs()`.
 
 ---
 
@@ -4177,16 +4200,22 @@ toggleJoinToSend(string|int|InputPeer $channel, bool $enabled): array
 ['updated' => true, 'channel_id' => 123, 'join_to_send' => true]
 ```
 
+> **Syarat Telegram API:** `toggleJoinToSend` hanya bisa diaktifkan pada supergroup yang sudah **di-link ke sebuah broadcast channel** sebagai discussion group-nya. Supergroup standalone yang belum punya linked channel akan menghasilkan error:
+> ```
+> [400] DISCUSSION_CHAT_REQUIRED
+> ```
+> Untuk mem-link supergroup ke channel, buka pengaturan channel → Discussion → pilih supergroup.
+
 ---
 
 ### 32.13 Wajib Persetujuan Admin untuk Join
 
 ```php
 // Aktifkan: semua permintaan join harus disetujui admin
-$client->toggleJoinRequest('@supergroup', true);
+$client->toggleJoinRequest('@supergroup_publik', true);
 
 // Nonaktifkan: siapa saja langsung bisa join (jika publik)
-$client->toggleJoinRequest('@supergroup', false);
+$client->toggleJoinRequest('@supergroup_publik', false);
 ```
 
 **Signature:**
@@ -4199,51 +4228,83 @@ toggleJoinRequest(string|int|InputPeer $channel, bool $enabled): array
 ['updated' => true, 'channel_id' => 123, 'join_request' => true]
 ```
 
+> **Syarat Telegram API:** `toggleJoinRequest` hanya berlaku pada channel/supergroup yang sudah **berstatus publik** (memiliki username). Memanggil method ini pada channel/supergroup privat (belum punya username) akan menghasilkan error:
+>
+> | Tipe peer | Error yang muncul |
+> |-----------|-------------------|
+> | Channel broadcast privat | `[400] CHAT_ID_INVALID` |
+> | Supergroup privat | `[400] CHAT_PUBLIC_REQUIRED` |
+>
+> Untuk menetapkan username publik, gunakan pengaturan channel/supergroup di aplikasi Telegram.
+
 ---
 
 ### 32.14 Contoh Lengkap: Setup Supergroup Baru
 
 ```php
-// 1. Buat supergroup baru
-$client->createChannel('Tim Alpha', 'Grup internal Tim Alpha', megagroup: true);
+use XnoxsProto\Client\TelegramClient;
+use XnoxsProto\TL\Functions\MessagesEditChatDefaultBannedRightsRequest as Perms;
 
-// 2. Temukan ID supergroup yang baru dibuat
-$dialogs = $client->getDialogs(10);
-$newGroup = null;
-foreach ($dialogs as $d) {
-    if ($d['title'] === 'Tim Alpha' && ($d['is_supergroup'] ?? false)) {
-        $newGroup = $d;
-        break;
-    }
-}
+$client = TelegramClient::create(API_ID, 'API_HASH', 'session');
+$client->connect();
+$client->start('+6281234567890');
 
-if (!$newGroup) {
-    die("Supergroup tidak ditemukan\n");
-}
-
-$groupId   = $newGroup['id'];
-$groupHash = $newGroup['access_hash'];
+// 1. Buat supergroup baru — channel_id langsung tersedia di return value
+$sg      = $client->createChannel('Tim Alpha', 'Grup internal Tim Alpha', megagroup: true);
+$groupId = $sg['channel_id'];   // ← langsung pakai, tidak perlu getDialogs()
 
 echo "Supergroup dibuat: ID=$groupId\n";
 
-// 3. Invite anggota
-$client->inviteToChannel($groupId, ['@user1', '@user2', '@user3']);
+// 2. Ubah judul
+$client->editChatTitle($groupId, 'Tim Alpha — Sprint 1');
 
-// 4. Set slow mode 30 detik
+// 3. Ubah deskripsi
+$client->editChatAbout($groupId, 'Supergroup tim pengembangan produk.');
+
+// 4. Invite anggota (bot bisa diundang ke supergroup, bukan broadcast channel)
+$client->inviteToChannel($groupId, ['@user1', '@user2']);
+
+// 5. Set slow mode 30 detik
 $client->toggleSlowMode($groupId, 30);
 
-// 5. Larang anggota ubah info grup
-use XnoxsProto\TL\Functions\MessagesEditChatDefaultBannedRightsRequest as Perms;
+// 6. Larang anggota ubah info grup dan pin pesan
 $client->setDefaultPermissions($groupId, Perms::BAN_CHANGE_INFO | Perms::BAN_PIN_MESSAGES);
 
-// 6. Generate link undangan dengan batas 100 orang
+// 7. Generate link undangan dengan batas 100 orang
 $invite = $client->exportInviteLink($groupId, usageLimit: 100);
 echo "Link undangan: " . $invite['link'] . "\n";
 
-// 7. Wajib persetujuan admin untuk join
-$client->toggleJoinRequest($groupId, true);
+// 8. Aktifkan tanda tangan admin di channel broadcast (bukan supergroup)
+// $client->toggleSignatures($channelId, true);  // khusus broadcast channel
+
+// 9. Hapus supergroup (opsional — hanya creator)
+// $client->deleteChat($groupId);
 
 echo "Setup supergroup selesai!\n";
+$client->disconnect();
+```
+
+**Contoh serupa untuk broadcast channel:**
+
+```php
+// Buat broadcast channel
+$ch        = $client->createChannel('Berita Harian', 'Kanal berita resmi', megagroup: false);
+$channelId = $ch['channel_id'];
+
+// Edit judul & deskripsi
+$client->editChatTitle($channelId, 'Berita Harian — Official');
+$client->editChatAbout($channelId, 'Update berita harian terpercaya.');
+
+// Aktifkan tanda tangan admin
+$client->toggleSignatures($channelId, true);
+
+// Generate link undangan
+$invite = $client->exportInviteLink($channelId, usageLimit: 200);
+echo "Link channel: " . $invite['link'] . "\n";
+
+// CATATAN: toggleJoinRequest hanya bisa diaktifkan jika channel sudah punya username publik
+// CATATAN: inviteToChannel tidak bisa untuk mengundang bot ke broadcast channel (USER_BOT)
+//          Gunakan promoteAdmin() untuk menambahkan bot sebagai admin channel
 ```
 
 ---

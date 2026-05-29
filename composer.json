@@ -1,0 +1,21 @@
+{
+    "name": "xnoxs/xnoxsproto",
+    "description": "PHP implementation of Telegram MTProto protocol",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "XnoxsProto\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.2",
+        "ext-openssl": "*",
+        "ext-mbstring": "*",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-gmp": "*"
+    },
+    "require-dev": {},
+    "minimum-stability": "stable"
+}

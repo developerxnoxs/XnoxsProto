@@ -1,0 +1,37 @@
+modules = ["php-8.2", "nix"]
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+
+[nix]
+channel = "stable-25_05"
+packages = ["openssl"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Interactive Login"
+
+[[workflows.workflow]]
+name = "Interactive Login"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "php interactive_login.php"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[userenv]
+
+[userenv.shared]
+TG_API_ID = "19001991"
+TG_API_HASH = "f3eb78228439ad8ac3b81729df992a9a"

@@ -159,30 +159,72 @@ function pilihTujuan(TelegramClient $c, string $label = 'tujuan'): ?array
     return null;
 }
 
-/** Filter dialog hanya channel/supergroup. */
+/**
+ * Library hanya mengembalikan 3 nilai 'type': 'user', 'chat', 'channel'.
+ * Supergroup & broadcast channel keduanya bertipe 'channel',
+ * dibedakan lewat flag 'is_supergroup' dan 'is_channel'.
+ */
+function _subtype(array $d): string
+{
+    if ($d['type'] === 'chat')    return 'Grup Biasa';
+    if ($d['type'] === 'channel') {
+        if (!empty($d['is_supergroup'])) return 'Supergroup';
+        if (!empty($d['is_channel']))    return 'Channel';
+        return 'Channel/SG';   // fallback jika flag belum diisi
+    }
+    if ($d['type'] === 'user') return !empty($d['bot']) ? 'Bot' : 'User';
+    return $d['type'];
+}
+
+/** Filter dialog hanya channel & supergroup (type='channel'). */
 function pilihChannel(TelegramClient $c, string $prompt = 'Pilih channel/supergroup'): ?array
 {
     echo "  Mengambil dialog...\n";
     $dialogs = coba(fn() => $c->getDialogs(80));
     if (!$dialogs) return null;
-    $filtered = array_values(array_filter($dialogs, fn($d) => in_array($d['type'] ?? '', ['channel', 'supergroup', 'megagroup'])));
+    $filtered = array_values(array_filter($dialogs, fn($d) => ($d['type'] ?? '') === 'channel'));
+    if (empty($filtered)) { info("Tidak ada channel/supergroup di dialog."); return null; }
     $items = array_map(fn($d) => [
-        'label' => "[{$d['type']}] " . ($d['title'] ?? 'Tanpa Nama') . (!empty($d['username']) ? " (@{$d['username']})" : ''),
+        'label' => sprintf("[%-12s] %s%s",
+            _subtype($d),
+            $d['title'] ?? 'Tanpa Nama',
+            !empty($d['username']) ? " (@{$d['username']})" : ''),
         'data'  => $d,
     ], $filtered);
     $pick = pilihList($items, $prompt);
     return $pick ? $pick['data'] : null;
 }
 
-/** Filter dialog hanya grup biasa (basic chat). */
-function pilihGrup(TelegramClient $c, string $prompt = 'Pilih grup'): ?array
+/** Filter dialog hanya grup biasa (type='chat'). */
+function pilihGrup(TelegramClient $c, string $prompt = 'Pilih grup biasa'): ?array
 {
     echo "  Mengambil dialog...\n";
     $dialogs = coba(fn() => $c->getDialogs(80));
     if (!$dialogs) return null;
-    $filtered = array_values(array_filter($dialogs, fn($d) => in_array($d['type'] ?? '', ['chat', 'group', 'supergroup', 'megagroup', 'channel'])));
+    $filtered = array_values(array_filter($dialogs, fn($d) => ($d['type'] ?? '') === 'chat'));
+    if (empty($filtered)) { info("Tidak ada grup biasa di dialog."); return null; }
     $items = array_map(fn($d) => [
-        'label' => "[{$d['type']}] " . ($d['title'] ?? 'Tanpa Nama'),
+        'label' => sprintf("[Grup Biasa] %s  (%d anggota)",
+            $d['title'] ?? 'Tanpa Nama',
+            $d['members'] ?? 0),
+        'data'  => $d,
+    ], $filtered);
+    $pick = pilihList($items, $prompt);
+    return $pick ? $pick['data'] : null;
+}
+
+/** Filter: grup biasa (chat) DAN channel/supergroup — untuk operasi yang mendukung keduanya. */
+function pilihGrupAtauChannel(TelegramClient $c, string $prompt = 'Pilih grup/channel'): ?array
+{
+    echo "  Mengambil dialog...\n";
+    $dialogs = coba(fn() => $c->getDialogs(80));
+    if (!$dialogs) return null;
+    $filtered = array_values(array_filter($dialogs, fn($d) => in_array($d['type'] ?? '', ['chat', 'channel'])));
+    if (empty($filtered)) { info("Tidak ada grup atau channel di dialog."); return null; }
+    $items = array_map(fn($d) => [
+        'label' => sprintf("[%-12s] %s",
+            _subtype($d),
+            $d['title'] ?? 'Tanpa Nama'),
         'data'  => $d,
     ], $filtered);
     $pick = pilihList($items, $prompt);
@@ -763,9 +805,9 @@ function menu_kontak(TelegramClient $c): void
 
             case '4': // ── Info chat
                 subjudul("Info Lengkap Chat");
-                $dialog = pilihDialog($c, "Pilih chat/grup");
+                $dialog = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$dialog) break;
-                if (in_array($dialog['type'] ?? '', ['channel', 'supergroup', 'megagroup'])) {
+                if (($dialog['type'] ?? '') === 'channel') {
                     $info = coba(fn() => $c->getFullChannel($dialog['id']));
                 } else {
                     $info = coba(fn() => $c->getFullChat($dialog['id']));
@@ -898,7 +940,7 @@ function menu_grup(TelegramClient $c): void
 
             case '8': // ── Promosi admin
                 subjudul("Promosi Admin");
-                $ch = pilihChannel($c, "Pilih channel/grup");
+                $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
                 $kontak = pilihKontak($c, "Pilih anggota yang akan dipromosi");
                 if (!$kontak) break;
@@ -915,7 +957,7 @@ function menu_grup(TelegramClient $c): void
 
             case '9': // ── Turunkan admin
                 subjudul("Turunkan Admin");
-                $ch = pilihChannel($c, "Pilih channel/grup");
+                $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
                 $kontak = pilihKontak($c, "Pilih admin yang akan diturunkan");
                 if (!$kontak) break;
@@ -926,7 +968,7 @@ function menu_grup(TelegramClient $c): void
 
             case '10': // ── Ban
                 subjudul("Ban Anggota");
-                $ch = pilihChannel($c, "Pilih channel/grup");
+                $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
                 $kontak = pilihKontak($c, "Pilih anggota yang akan di-ban");
                 if (!$kontak) break;
@@ -937,7 +979,7 @@ function menu_grup(TelegramClient $c): void
 
             case '11': // ── Unban
                 subjudul("Unban Anggota");
-                $ch = pilihChannel($c, "Pilih channel/grup");
+                $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
                 $kontak = pilihKontak($c, "Pilih anggota yang akan di-unban");
                 if (!$kontak) break;
@@ -948,7 +990,7 @@ function menu_grup(TelegramClient $c): void
 
             case '12': // ── Kick
                 subjudul("Kick Anggota");
-                $ch = pilihChannel($c, "Pilih channel/grup");
+                $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
                 $kontak = pilihKontak($c, "Pilih anggota yang akan di-kick");
                 if (!$kontak) break;
@@ -959,7 +1001,7 @@ function menu_grup(TelegramClient $c): void
 
             case '13': // ── Export link undangan
                 subjudul("Export Link Undangan");
-                $dialog = pilihDialog($c, "Pilih chat/channel");
+                $dialog = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$dialog) break;
                 $res = coba(fn() => $c->exportInviteLink($dialog['id']));
                 if ($res) ok("Link undangan: " . ($res['link'] ?? '?'));
@@ -979,7 +1021,7 @@ function menu_grup(TelegramClient $c): void
 
             case '15': // ── Edit judul
                 subjudul("Edit Judul");
-                $dialog = pilihDialog($c, "Pilih chat/channel");
+                $dialog = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$dialog) break;
                 $judul = inp("  Judul baru: ");
                 if ($judul === '') break;
@@ -990,7 +1032,7 @@ function menu_grup(TelegramClient $c): void
 
             case '16': // ── Edit deskripsi
                 subjudul("Edit Deskripsi");
-                $dialog = pilihDialog($c, "Pilih channel/supergroup");
+                $dialog = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$dialog) break;
                 $desc = inp("  Deskripsi baru: ");
                 $res = coba(fn() => $c->editChatAbout($dialog['id'], $desc));
@@ -1018,7 +1060,7 @@ function menu_grup(TelegramClient $c): void
 
             case '18': // ── Hapus grup/channel
                 subjudul("Hapus Grup/Channel");
-                $dialog = pilihDialog($c, "Pilih yang akan dihapus");
+                $dialog = pilihGrupAtauChannel($c, "Pilih yang akan dihapus");
                 if (!$dialog) break;
                 $konfirm = inp("  ⚠️  HAPUS PERMANEN '{$dialog['title']}'? Ketik 'HAPUS' untuk konfirmasi: ");
                 if ($konfirm === 'HAPUS') {

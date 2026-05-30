@@ -385,12 +385,14 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
         echo "  [2]  Edit nama depan / nama belakang / bio\n";
         echo "  [3]  Edit username\n";
         echo "  [4]  Upload foto profil\n";
-        echo "  [5]  Lihat sesi aktif\n";
-        echo "  [6]  Hapus sesi tertentu\n";
-        echo "  [7]  Keluar semua sesi lain\n";
-        echo "  [8]  Lihat pengaturan privasi\n";
-        echo "  [9]  Ubah pengaturan privasi\n";
-        echo "  [10] Cabut session lokal (.session file)\n";
+        echo "  [5]  Lihat foto profil\n";
+        echo "  [6]  Hapus foto profil\n";
+        echo "  [7]  Lihat sesi aktif\n";
+        echo "  [8]  Hapus sesi tertentu\n";
+        echo "  [9]  Keluar semua sesi lain\n";
+        echo "  [10] Lihat pengaturan privasi\n";
+        echo "  [11] Ubah pengaturan privasi\n";
+        echo "  [12] Cabut session lokal (.session file)\n";
         echo "  [0]  Kembali\n\n";
 
         switch (inp("Pilih: ")) {
@@ -443,7 +445,48 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 jeda();
                 break;
 
-            case '5': // ── Sesi aktif
+            case '5': // ── Lihat foto profil
+                subjudul("Foto Profil");
+                $photos = coba(fn() => $c->getAccount()->getProfilePhotos());
+                if ($photos !== null) {
+                    if (empty($photos)) {
+                        info("Tidak ada foto profil tersimpan.");
+                    } else {
+                        foreach ($photos as $i => $p) {
+                            printf("  [%d] ID=%-20s  tanggal=%s\n",
+                                $i + 1,
+                                $p['id'],
+                                date('d/m/Y H:i', $p['date'])
+                            );
+                        }
+                    }
+                }
+                jeda();
+                break;
+
+            case '6': // ── Hapus foto profil
+                subjudul("Hapus Foto Profil");
+                $photos = coba(fn() => $c->getAccount()->getProfilePhotos());
+                if ($photos === null) { jeda(); break; }
+                if (empty($photos)) { info("Tidak ada foto profil untuk dihapus."); jeda(); break; }
+                $items = array_map(fn($p) => [
+                    'label' => sprintf("ID=%-20s  tanggal=%s", $p['id'], date('d/m/Y H:i', $p['date'])),
+                    'data'  => $p,
+                ], $photos);
+                $pick = pilihList($items, "Pilih foto yang akan dihapus");
+                if (!$pick) { jeda(); break; }
+                $konfirm = inp("  Hapus foto ini? (ya/tidak): ");
+                if (strtolower($konfirm) === 'ya') {
+                    $res = coba(fn() => $c->getAccount()->deleteProfilePhoto($pick['data']['id']));
+                    if ($res === true) ok("Foto berhasil dihapus.");
+                    elseif ($res === false) err("Server tidak mengkonfirmasi penghapusan.");
+                } else {
+                    info("Dibatalkan.");
+                }
+                jeda();
+                break;
+
+            case '7': // ── Sesi aktif
                 subjudul("Sesi Aktif");
                 $sessions = coba(fn() => $c->getAccount()->getAuthorizations());
                 if ($sessions) {
@@ -462,7 +505,7 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 jeda();
                 break;
 
-            case '6': // ── Hapus sesi tertentu
+            case '8': // ── Hapus sesi tertentu
                 subjudul("Hapus Sesi Tertentu");
                 $sessions = coba(fn() => $c->getAccount()->getAuthorizations());
                 if (!$sessions) { jeda(); break; }
@@ -499,7 +542,7 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 jeda();
                 break;
 
-            case '7': // ── Keluar semua sesi lain
+            case '9': // ── Keluar semua sesi lain
                 subjudul("Keluar Semua Sesi Lain");
                 $konfirm = inp("  Yakin? Semua perangkat lain akan logout. (ya/tidak): ");
                 if ($konfirm === 'ya') {
@@ -509,7 +552,7 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 jeda();
                 break;
 
-            case '8': // ── Lihat privasi
+            case '10': // ── Lihat privasi
                 subjudul("Lihat Pengaturan Privasi");
                 $privacyKeys = [
                     'Last Seen / Online'  => AccountGetPrivacyRequest::KEY_STATUS_TIMESTAMP,
@@ -553,7 +596,7 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 jeda();
                 break;
 
-            case '9': // ── Ubah privasi
+            case '11': // ── Ubah privasi
                 subjudul("Ubah Pengaturan Privasi");
                 $privacyKeys = [
                     'Last Seen / Online'  => AccountGetPrivacyRequest::KEY_STATUS_TIMESTAMP,
@@ -584,7 +627,7 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 jeda();
                 break;
 
-            case '10': // ── Cabut session lokal
+            case '12': // ── Cabut session lokal
                 subjudul("Cabut Session Lokal");
                 $files = glob($sessionsDir . '/*.session') ?: [];
                 if (empty($files)) {

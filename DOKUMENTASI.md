@@ -2099,7 +2099,72 @@ echo "\n";
 - Foto yang diupload langsung menjadi foto profil aktif
 - Diuji nyata: foto 4.5 KB (1 chunk) berhasil dalam ~0.36 detik
 
-### 23.4 Lihat Semua Sesi Aktif
+### 23.4 Lihat Foto Profil
+
+```php
+$account = $client->getAccount();
+
+$photos = $account->getProfilePhotos();        // default limit 100
+$photos = $account->getProfilePhotos(limit: 10); // opsional
+
+foreach ($photos as $i => $p) {
+    printf("[%d] ID=%-20s  tanggal=%s\n",
+        $i + 1,
+        $p['id'],
+        date('d/m/Y H:i', $p['date'])
+    );
+}
+```
+
+**Return value — array of:**
+```php
+[
+    'id'             => 6113664965953655333,  // int — ID foto
+    'access_hash'    => -4892103847265019228, // int — diperlukan untuk operasi lanjut
+    'file_reference' => "\x01\x02...",        // string binary
+    'date'           => 1780149586,           // int — Unix timestamp upload
+]
+```
+
+**Catatan:**
+- Foto terbaru berada di indeks pertama (urutan Telegram: terbaru → terlama)
+- Diuji nyata: berhasil mengembalikan foto dengan `id`, `access_hash`, `file_reference`, dan `date`
+
+---
+
+### 23.5 Hapus Foto Profil
+
+```php
+$account = $client->getAccount();
+
+// Hapus satu foto berdasarkan photo_id
+$berhasil = $account->deleteProfilePhoto(6113664965953655333); // bool
+
+// Hapus beberapa sekaligus
+$deletedIds = $account->deleteProfilePhotos([
+    6113664965953655333,
+    5998123456789012345,
+]);
+// Returns: array int[] — photo_id yang dikonfirmasi terhapus server
+
+// Pola umum: ambil daftar → pilih → hapus
+$photos = $account->getProfilePhotos();
+if (!empty($photos)) {
+    $foto = $photos[count($photos) - 1]; // foto terlama
+    $berhasil = $account->deleteProfilePhoto($foto['id']);
+}
+```
+
+**Catatan:**
+- `deleteProfilePhoto()` secara internal memanggil `getProfilePhotos()` terlebih dahulu
+  untuk mendapatkan `access_hash` dan `file_reference` yang dibutuhkan Telegram
+- Foto profil aktif (paling atas) bisa dihapus; Telegram akan otomatis menggunakan foto berikutnya
+- Melempar `\InvalidArgumentException` jika `photo_id` tidak ditemukan di profil
+- Diuji nyata: `deleteProfilePhoto(6113903495552372846)` → `true` (sukses, dikonfirmasi server)
+
+---
+
+### 23.6 Lihat Semua Sesi Aktif
 
 ```php
 $sessions = $account->getAuthorizations();
@@ -2135,7 +2200,7 @@ foreach ($sessions as $sesi) {
 ]
 ```
 
-### 23.5 Terminate Sesi Tertentu
+### 23.7 Terminate Sesi Tertentu
 
 ```php
 $sessions = $account->getAuthorizations();
@@ -2147,7 +2212,7 @@ foreach ($sessions as $sesi) {
 }
 ```
 
-### 23.6 Terminate Semua Sesi Lain
+### 23.8 Terminate Semua Sesi Lain
 
 ```php
 $jumlah = $account->terminateAllOtherSessions();

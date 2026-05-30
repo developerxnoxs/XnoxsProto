@@ -9,6 +9,8 @@ use XnoxsProto\TL\Functions\AccountResetAuthorizationRequest;
 use XnoxsProto\TL\Functions\AccountGetPrivacyRequest;
 use XnoxsProto\TL\Functions\AccountSetPrivacyRequest;
 use XnoxsProto\TL\Functions\PhotosUploadProfilePhotoRequest;
+use XnoxsProto\TL\Functions\PhotosGetUserPhotosRequest;
+use XnoxsProto\TL\Functions\PhotosDeletePhotosRequest;
 use XnoxsProto\TL\Types\User;
 use XnoxsProto\TL\BinaryReader;
 use XnoxsProto\Exceptions\RPCException;
@@ -117,6 +119,148 @@ class Account
         }
 
         return ['photo_id' => 0, 'date' => time()];
+    }
+
+    /**
+     * Ambil daftar foto profil akun sendiri.
+     *
+     * @param int $limit Maksimal jumlah foto yang diambil (default 100)
+     * @return array[] Array of ['id', 'access_hash', 'file_reference', 'date']
+     */
+    public function getProfilePhotos(int $limit = 100): array
+    {
+        $sender  = $this->client->getSender();
+        $request = new PhotosGetUserPhotosRequest(0, 0, $limit);
+        $request = $this->client->wrapFirstRequest($request);
+
+        try {
+            $response = $sender->send($request);
+        } catch (RPCException $e) {
+            throw new \RuntimeException("[{$e->errorCode}] {$e->errorMessage}", $e->errorCode, $e);
+        }
+
+        $c = $response['constructor'];
+        $r = $response['reader'];
+
+        // photos.photos#8dca6aa5  atau  photos.photosSlice#15051f54
+        if ($c === 0x15051f54) {
+            $r->readInt(); // count (total, bukan jumlah yg dikembalikan)
+        } elseif ($c !== 0x8dca6aa5) {
+            return [];
+        }
+
+        // Vector<Photo>
+        $r->readInt(); // vector ctor 0x1cb5c415
+        $count  = $r->readInt();
+        $photos = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $photoCtor = $r->readInt();
+
+            // photoEmpty#2331b22d
+            if ($photoCtor === 0x2331b22d) {
+                $r->readLong(); // id
+                continue;
+            }
+
+            // photo#fb197a65
+            if ($photoCtor !== 0xfb197a65) {
+                break; // konstruktor tidak dikenal, hentikan parsing
+            }
+
+            $flags          = $r->readInt();
+            $id             = $r->readLong();
+            $accessHash     = $r->readLong();
+            $fileReference  = $r->readBytes();
+            $date           = $r->readInt();
+
+            // Lewati sizes: Vector<PhotoSize>
+            $this->skipPhotoSizes($r);
+
+            // Lewati video_sizes: flags.1?Vector<VideoSize>
+            if ($flags & 2) {
+                $this->skipVideoSizes($r);
+            }
+
+            // dc_id:int
+            $r->readInt();
+
+            $photos[] = [
+                'id'             => $id,
+                'access_hash'    => $accessHash,
+                'file_reference' => $fileReference,
+                'date'           => $date,
+            ];
+        }
+
+        return $photos;
+    }
+
+    /**
+     * Hapus satu foto profil berdasarkan photo_id.
+     *
+     * Gunakan getProfilePhotos() untuk mendapatkan ID foto yang tersedia.
+     *
+     * @param int $photoId ID foto yang ingin dihapus
+     * @return bool true jika foto berhasil dihapus dari daftar yang dikembalikan server
+     * @throws \InvalidArgumentException Jika foto tidak ditemukan di profil
+     */
+    public function deleteProfilePhoto(int $photoId): bool
+    {
+        $deleted = $this->deleteProfilePhotos([$photoId]);
+        return in_array($photoId, $deleted, true);
+    }
+
+    /**
+     * Hapus beberapa foto profil sekaligus berdasarkan array photo_id.
+     *
+     * @param int[] $photoIds Array ID foto yang ingin dihapus
+     * @return int[] Array photo_id yang berhasil dihapus (dikembalikan server)
+     * @throws \InvalidArgumentException Jika salah satu ID tidak ditemukan di profil
+     */
+    public function deleteProfilePhotos(array $photoIds): array
+    {
+        if (empty($photoIds)) {
+            return [];
+        }
+
+        // Ambil semua foto profil untuk mendapatkan access_hash & file_reference
+        $all    = $this->getProfilePhotos();
+        $byId   = [];
+        foreach ($all as $p) {
+            $byId[$p['id']] = $p;
+        }
+
+        $toDelete = [];
+        foreach ($photoIds as $pid) {
+            if (!isset($byId[$pid])) {
+                throw new \InvalidArgumentException("Foto dengan ID $pid tidak ditemukan di profil.");
+            }
+            $toDelete[] = $byId[$pid];
+        }
+
+        $sender  = $this->client->getSender();
+        $request = new PhotosDeletePhotosRequest($toDelete);
+        $request = $this->client->wrapFirstRequest($request);
+
+        try {
+            $response = $sender->send($request);
+        } catch (RPCException $e) {
+            throw new \RuntimeException("[{$e->errorCode}] {$e->errorMessage}", $e->errorCode, $e);
+        }
+
+        $c = $response['constructor'];
+        $r = $response['reader'];
+
+        // Respons: Vector<long> — $c sudah berisi vector ctor (0x1cb5c415),
+        // reader langsung dimulai dari count (ctor sudah dikonsumsi sebelumnya).
+        $n       = $r->readInt();
+        $deleted = [];
+        for ($i = 0; $i < $n; $i++) {
+            $deleted[] = $r->readLong();
+        }
+
+        return $deleted;
     }
 
     // =========================================================================
@@ -342,6 +486,60 @@ class Account
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    // =========================================================================
+    // Skip helpers untuk parsing foto
+    // =========================================================================
+
+    private function skipPhotoSizes(BinaryReader $r): void
+    {
+        $r->readInt(); // vector ctor
+        $n = $r->readInt();
+        for ($i = 0; $i < $n; $i++) {
+            $ctor = $r->readInt();
+            match ($ctor) {
+                // photoSizeEmpty#e17e23c — type:string
+                0x0e17e23c => $r->readString(),
+                // photoSize#75c2f7b8 — type:string w:int h:int size:int
+                0x75c2f7b8 => ($r->readString() && $r->readInt() && $r->readInt() && $r->readInt()),
+                // photoCachedSize#e9a734fa — type:string w:int h:int bytes:bytes
+                0xe9a734fa => ($r->readString() && $r->readInt() && $r->readInt() && $r->readBytes()),
+                // photoStrippedSize#e0fe0de — type:string bytes:bytes
+                0x0e0fe0de => ($r->readString() && $r->readBytes()),
+                // photoSizeProgressive#fa3efb95 — type:string w:int h:int sizes:Vector<int>
+                0xfa3efb95 => (function () use ($r) {
+                    $r->readString();
+                    $r->readInt(); // w
+                    $r->readInt(); // h
+                    $r->readInt(); // vector ctor
+                    $m = $r->readInt();
+                    for ($j = 0; $j < $m; $j++) $r->readInt();
+                })(),
+                // photoPathSize#d8214d41 — type:string bytes:bytes
+                0xd8214d41 => ($r->readString() && $r->readBytes()),
+                default => null, // konstruktor tidak dikenal, hentikan
+            };
+        }
+    }
+
+    private function skipVideoSizes(BinaryReader $r): void
+    {
+        $r->readInt(); // vector ctor
+        $n = $r->readInt();
+        for ($i = 0; $i < $n; $i++) {
+            $ctor = $r->readInt();
+            // videoSize#de33b094 — type:string w:int h:int size:int video_start_ts:flags.0?double
+            if ($ctor === 0xde33b094) {
+                $flags = $r->readInt();
+                $r->readString(); // type
+                $r->readInt();    // w
+                $r->readInt();    // h
+                $r->readInt();    // size
+                if ($flags & 1) $r->readDouble(); // video_start_ts
+            }
+            // videoSizeEmojiMarkup & videoSizeStickerMarkup — jarang di foto profil, abaikan
+        }
+    }
 
     private function parseUserResponse(array $response): array
     {

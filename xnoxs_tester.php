@@ -136,6 +136,29 @@ function pilihKontak(TelegramClient $c, string $prompt = 'Pilih kontak'): ?array
     return $pick ? $pick['data'] : null;
 }
 
+/**
+ * Tanya user: pilih tujuan dari Dialog atau dari Kontak.
+ * Mengembalikan array dengan setidaknya key 'id' dan 'title'/'display'.
+ */
+function pilihTujuan(TelegramClient $c, string $label = 'tujuan'): ?array
+{
+    echo "\n  Pilih $label dari:\n";
+    echo "  [1] Dialog (riwayat chat)\n";
+    echo "  [2] Kontak\n";
+    echo "  [0] Batal\n";
+    $pilihan = inp("  Pilihan: ");
+    if ($pilihan === '1') {
+        return pilihDialog($c, "Pilih $label");
+    } elseif ($pilihan === '2') {
+        $k = pilihKontak($c, "Pilih $label");
+        if (!$k) return null;
+        // Normalisasi ke format mirip dialog agar 'id' selalu ada
+        $k['title'] = $k['display'] ?? (($k['first_name'] ?? '') . ' ' . ($k['last_name'] ?? ''));
+        return $k;
+    }
+    return null;
+}
+
 /** Filter dialog hanya channel/supergroup. */
 function pilihChannel(TelegramClient $c, string $prompt = 'Pilih channel/supergroup'): ?array
 {
@@ -408,7 +431,7 @@ function menu_pesan(TelegramClient $c): void
 
             case '1': // ── Kirim pesan teks
                 subjudul("Kirim Pesan Teks");
-                $dialog = pilihDialog($c, "Pilih tujuan");
+                $dialog = pilihTujuan($c, "tujuan");
                 if (!$dialog) break;
                 $teks = inp("  Teks pesan: ");
                 if ($teks === '') break;
@@ -469,7 +492,7 @@ function menu_pesan(TelegramClient $c): void
                 $msg = pilihPesan($c, $from['id'], 15, "Pilih pesan yang akan diteruskan");
                 if (!$msg) break;
                 echo "  Pilih tujuan:\n";
-                $to = pilihDialog($c, "Pilih chat tujuan");
+                $to = pilihTujuan($c, "tujuan forward");
                 if (!$to) break;
                 $res = coba(fn() => $c->forwardMessages($to['id'], [$msg['id']], $from['id']));
                 if ($res) ok("Pesan diteruskan.");
@@ -531,7 +554,7 @@ function menu_pesan(TelegramClient $c): void
 
             case '10': // ── Kirim polling
                 subjudul("Kirim Polling");
-                $dialog = pilihDialog($c, "Pilih tujuan");
+                $dialog = pilihTujuan($c, "tujuan");
                 if (!$dialog) break;
                 $pertanyaan = inp("  Pertanyaan polling: ");
                 if ($pertanyaan === '') break;
@@ -576,7 +599,7 @@ function menu_media(TelegramClient $c, string $assetPhoto, string $assetDoc, str
 
             case '1': // ── Kirim foto
                 subjudul("Kirim Foto");
-                $dialog = pilihDialog($c, "Pilih tujuan");
+                $dialog = pilihTujuan($c, "tujuan");
                 if (!$dialog) break;
                 $path = inp("  Path foto (Enter = pakai test_photo.jpg): ");
                 if ($path === '') $path = $assetPhoto;
@@ -589,7 +612,7 @@ function menu_media(TelegramClient $c, string $assetPhoto, string $assetDoc, str
 
             case '2': // ── Kirim video
                 subjudul("Kirim Video");
-                $dialog = pilihDialog($c, "Pilih tujuan");
+                $dialog = pilihTujuan($c, "tujuan");
                 if (!$dialog) break;
                 $path = inp("  Path video (mp4): ");
                 if ($path === '' || !file_exists($path)) { err("File tidak ditemukan."); jeda(); break; }
@@ -601,7 +624,7 @@ function menu_media(TelegramClient $c, string $assetPhoto, string $assetDoc, str
 
             case '3': // ── Kirim audio
                 subjudul("Kirim Audio");
-                $dialog = pilihDialog($c, "Pilih tujuan");
+                $dialog = pilihTujuan($c, "tujuan");
                 if (!$dialog) break;
                 $path = inp("  Path audio (Enter = pakai test_audio.mp3): ");
                 if ($path === '') $path = $assetAudio;
@@ -614,7 +637,7 @@ function menu_media(TelegramClient $c, string $assetPhoto, string $assetDoc, str
 
             case '4': // ── Kirim dokumen
                 subjudul("Kirim Dokumen");
-                $dialog = pilihDialog($c, "Pilih tujuan");
+                $dialog = pilihTujuan($c, "tujuan");
                 if (!$dialog) break;
                 $path = inp("  Path file (Enter = pakai test_doc.txt): ");
                 if ($path === '') $path = $assetDoc;
@@ -627,7 +650,7 @@ function menu_media(TelegramClient $c, string $assetPhoto, string $assetDoc, str
 
             case '5': // ── Kirim voice
                 subjudul("Kirim Pesan Suara (Voice)");
-                $dialog = pilihDialog($c, "Pilih tujuan");
+                $dialog = pilihTujuan($c, "tujuan");
                 if (!$dialog) break;
                 $path = inp("  Path file ogg/mp3: ");
                 if ($path === '' || !file_exists($path)) { err("File tidak ditemukan."); jeda(); break; }

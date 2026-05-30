@@ -6,6 +6,7 @@ use XnoxsProto\TL\Functions\MessagesSendMessageRequest;
 use XnoxsProto\TL\Functions\MessagesSendMediaRequest;
 use XnoxsProto\TL\Functions\ContactsGetContactsRequest;
 use XnoxsProto\TL\Functions\MessagesGetDialogsRequest;
+use XnoxsProto\TL\Functions\MessagesGetChatsRequest;
 use XnoxsProto\TL\Functions\UsersGetUsersRequest;
 use XnoxsProto\TL\Functions\ContactsResolveUsernameRequest;
 use XnoxsProto\TL\Functions\MessagesGetHistoryRequest;
@@ -39,6 +40,10 @@ class Messages
     const DIALOGS_CONSTRUCTOR        = 0x15ba6c40; // messages.dialogs
     const DIALOGS_SLICE_CONSTRUCTOR  = 0x71e094f3; // messages.dialogsSlice
     const DIALOGS_NOT_MODIFIED       = 0x0f0e3517; // messages.dialogsNotModified
+
+    // messages.Chats constructor IDs (response dari messages.getChats)
+    const MESSAGES_CHATS             = 0x64ff9fd5; // messages.chats#64ff9fd5
+    const MESSAGES_CHATS_SLICE       = 0x9cd81144; // messages.chatsSlice#9cd81144
 
     // Vector constructor
     const VECTOR_CONSTRUCTOR         = 0x1cb5c415;
@@ -480,6 +485,68 @@ class Messages
                 }
             } catch (\Throwable $e) {
                 continue;
+            }
+        }
+
+        return $result;
+    }
+
+    // -----------------------------------------------------------------------
+    // messages.getChats — enrich Chat#ID entries (basic groups, tanpa access_hash)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Ambil info dasar (title, username) untuk daftar grup biasa berdasarkan ID.
+     * Menggunakan messages.getChats#49e9528f — TIDAK memerlukan access_hash.
+     * Cocok untuk memperbaiki tampilan "Chat#ID" setelah getDialogs parsing gagal.
+     *
+     * @param  int[] $ids  Daftar chat_id (basic group — bukan channel/supergroup)
+     * @return Chat[]      Array Chat terindeks oleh id
+     */
+    public function fetchChatsByIds(array $ids): array
+    {
+        if (empty($ids)) return [];
+
+        $this->assertReady();
+        $sender = $this->client->getSender();
+        if (!$sender) return [];
+
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        $request = new MessagesGetChatsRequest($ids);
+        $request = $this->client->wrapFirstRequest($request);
+
+        try {
+            $response = $sender->send($request);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $ctor   = $response['constructor'];
+        $reader = $response['reader'];
+
+        if ($ctor !== self::MESSAGES_CHATS && $ctor !== self::MESSAGES_CHATS_SLICE) {
+            return [];
+        }
+
+        // chatsSlice mempunyai count:int ekstra di depan
+        if ($ctor === self::MESSAGES_CHATS_SLICE) {
+            $reader->readInt(); // count:int
+        }
+
+        // Vector<Chat>
+        $reader->readInt();         // 0x1cb5c415
+        $count  = $reader->readInt();
+        $result = [];
+        for ($i = 0; $i < $count; $i++) {
+            $chatCtor = $reader->readInt();
+            try {
+                $chat = Chat::fromReader($reader, $chatCtor);
+                if ($chat->id && $chat->type !== 'unknown' && $chat->type !== 'empty') {
+                    $result[$chat->id] = $chat;
+                }
+            } catch (\Throwable) {
+                break; // stream rusak — hentikan
             }
         }
 

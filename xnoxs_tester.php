@@ -1481,6 +1481,40 @@ function chat_realtime(TelegramClient $c): void
         $inputPeer = $c->resolvePeer($peerId);
     } catch (\Throwable $e) {
         err("Tidak dapat resolve peer: " . $e->getMessage());
+        jeda();
+        return;
+    }
+
+    // Deteksi user/channel dengan access_hash=0 sebelum memulai — akan menyebabkan
+    // PEER_ID_INVALID saat digunakan. Coba enrichment lewat kontak sebagai fallback.
+    $tipePeer = $dialog['type'] ?? 'user';
+    if ($tipePeer === 'user' && $inputPeer->getAccessHash() === 0) {
+        info("  Info akses user tidak tersedia, mencoba lewat daftar kontak...");
+        $resolved = false;
+        try {
+            $c->getContacts(); // isi session & peerCache dengan access_hash kontak
+            $inputPeer = $c->resolvePeer($peerId);
+            $resolved  = ($inputPeer->getAccessHash() !== 0);
+        } catch (\Throwable) {}
+
+        if (!$resolved) {
+            err("User ini tidak dapat dibuka.");
+            err("Informasi akses (access_hash) tidak tersedia — kemungkinan user ini");
+            err("bukan kontak, akun terbatas, atau tidak pernah berinteraksi langsung.");
+            $altInfo = !empty($dialog['username']) ? "\n  Saran: coba ketik '@{$dialog['username']}' di menu pencarian." : '';
+            info("  Saran: tambahkan user ini ke kontak terlebih dahulu.$altInfo");
+            jeda();
+            return;
+        }
+        ok("  Berhasil resolve via kontak.");
+    }
+
+    if ($tipePeer === 'channel' && $inputPeer->getAccessHash() === 0) {
+        err("Channel ini tidak dapat dibuka.");
+        err("Access_hash channel tidak tersedia — parsing dialog kemungkinan gagal");
+        err("karena constructor baru dari server Telegram.");
+        info("  Saran: restart program atau coba akses channel via @username jika ada.");
+        jeda();
         return;
     }
 

@@ -1064,6 +1064,48 @@ class TelegramClient
             }
         }
 
+        // Enrich Chat#ID entries (grup biasa) via messages.getChats — tidak perlu access_hash.
+        // Ini memperbaiki kasus parsing gagal karena constructor tak dikenal di chats vector.
+        $chatIdsToEnrich = [];
+        foreach ($dialogs as $d) {
+            if ($d['type'] === 'chat' && str_starts_with($d['title'], 'Chat#')) {
+                $chatIdsToEnrich[] = $d['id'];
+            }
+        }
+        if ($chatIdsToEnrich) {
+            try {
+                $fetchedChats = $this->messages->fetchChatsByIds($chatIdsToEnrich);
+                if ($fetchedChats) {
+                    $toCache = [];
+                    foreach ($dialogs as &$d) {
+                        if ($d['type'] === 'chat' && isset($fetchedChats[$d['id']])) {
+                            $chat = $fetchedChats[$d['id']];
+                            $displayName = $chat->getDisplayName();
+                            if ($displayName && $displayName !== ('Chat#' . $d['id'])) {
+                                $d['title']    = $displayName;
+                                $d['username'] = $chat->username ?? ($d['username'] ?? null);
+                                // Update peerCache
+                                $this->peerCache['id:' . $d['id']]['title']    = $d['title'];
+                                $this->peerCache['id:' . $d['id']]['username'] = $d['username'];
+                                // Simpan ke session untuk run berikutnya
+                                $row = [
+                                    'id'    => $chat->id,
+                                    'type'  => 'chat',
+                                    'title' => $chat->title ?? $displayName,
+                                ];
+                                if ($chat->username !== null) $row['username'] = $chat->username;
+                                $toCache[] = $row;
+                            }
+                        }
+                    }
+                    unset($d);
+                    if ($toCache) $this->session->processEntities($toCache);
+                }
+            } catch (\Throwable) {
+                // Non-fatal — Chat#ID tetap tampil jika fetch gagal
+            }
+        }
+
         return $dialogs;
     }
 

@@ -25,43 +25,62 @@ $sessionFile = !empty($sessionFiles) ? $sessionFiles[0] : null;
 // HELPER FUNCTIONS
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ── Kode warna ANSI ─────────────────────────────────────────────────────────
+const C_RESET   = "\033[0m";
+const C_BOLD    = "\033[1m";
+const C_DIM     = "\033[2m";
+const C_CYAN    = "\033[96m";
+const C_BLUE    = "\033[94m";
+const C_GREEN   = "\033[92m";
+const C_YELLOW  = "\033[93m";
+const C_RED     = "\033[91m";
+const C_MAGENTA = "\033[95m";
+const C_WHITE   = "\033[97m";
+const C_GRAY    = "\033[90m";
+
 function inp(string $prompt = ''): string
 {
-    if ($prompt) echo $prompt;
+    if ($prompt) echo C_CYAN . $prompt . C_RESET;
     return trim(fgets(STDIN));
 }
 
 function jeda(string $msg = ''): void
 {
-    echo ($msg ?: "\n[Tekan Enter untuk lanjut...]");
+    echo C_GRAY . ($msg ?: "\n  [Tekan Enter untuk lanjut...]") . C_RESET;
     fgets(STDIN);
 }
 
 function baris(int $n = 60, string $c = '─'): void
 {
-    echo str_repeat($c, $n) . "\n";
+    $warna = ($c === '═') ? C_CYAN : C_GRAY;
+    echo $warna . str_repeat($c, $n) . C_RESET . "\n";
 }
 
 function judul(string $teks): void
 {
     echo "\n";
-    baris(60, '═');
-    echo "  " . strtoupper($teks) . "\n";
-    baris(60, '═');
-    echo "\n";
+    echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n";
+    echo C_BOLD . C_WHITE . "  " . strtoupper($teks) . C_RESET . "\n";
+    echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n\n";
 }
 
 function subjudul(string $s): void
 {
     echo "\n";
-    baris(60, '─');
-    echo "  $s\n";
-    baris(60, '─');
+    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+    echo C_BOLD . C_YELLOW . "  $s" . C_RESET . "\n";
+    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
 }
 
-function ok(string $msg): void  { echo "  ✅  $msg\n"; }
-function err(string $msg): void { echo "  ❌  $msg\n"; }
-function info(string $msg): void{ echo "  ℹ️   $msg\n"; }
+function ok(string $msg): void   { echo "  " . C_GREEN  . "✓  $msg" . C_RESET . "\n"; }
+function err(string $msg): void  { echo "  " . C_RED    . "✗  $msg" . C_RESET . "\n"; }
+function info(string $msg): void { echo "  " . C_BLUE   . "›  $msg" . C_RESET . "\n"; }
+
+function mi(string $n, string $label, bool $back = false): void
+{
+    $numClr  = $back ? C_RED : C_YELLOW;
+    echo "  " . $numClr . C_BOLD . "[$n]" . C_RESET . "  $label\n";
+}
 
 function coba(callable $fn): mixed
 {
@@ -85,9 +104,9 @@ function pilihList(array $items, string $prompt = 'Pilih nomor'): ?array
         return null;
     }
     foreach ($items as $i => $item) {
-        printf("  [%d] %s\n", $i + 1, $item['label']);
+        echo "  " . C_YELLOW . C_BOLD . "[" . ($i + 1) . "]" . C_RESET . " " . $item['label'] . "\n";
     }
-    echo "  [0] Batal\n";
+    echo "  " . C_RED . C_BOLD . "[0]" . C_RESET . " Batal\n";
     $n = (int)inp("$prompt (0-" . count($items) . "): ");
     if ($n < 1 || $n > count($items)) return null;
     return $items[$n - 1];
@@ -133,9 +152,9 @@ function pilihKontak(TelegramClient $c, string $prompt = 'Pilih kontak'): ?array
 function pilihTujuan(TelegramClient $c, string $label = 'tujuan'): ?array
 {
     echo "\n  Pilih $label dari:\n";
-    echo "  [1] Dialog (riwayat chat)\n";
-    echo "  [2] Kontak\n";
-    echo "  [0] Batal\n";
+    mi('1', 'Dialog (riwayat chat)');
+    mi('2', 'Kontak');
+    mi('0', 'Batal', true);
     $pilihan = inp("  Pilihan: ");
     if ($pilihan === '1') {
         return pilihDialog($c, "Pilih $label");
@@ -326,50 +345,55 @@ $ASSET_AUDIO = __DIR__ . '/test_assets/test_audio.mp3';
 // ══════════════════════════════════════════════════════════════════════════════
 
 echo "\n";
-baris(60, '═');
-echo "  XNOXSPROTO — TESTER FITUR LENGKAP\n";
-baris(60, '═');
+echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n";
+echo C_BOLD . C_MAGENTA . "  ██╗  ██╗███╗  ██╗ ██████╗ ██╗  ██╗███████╗\n";
+echo "  ╚██╗██╔╝████╗ ██║██╔═══██╗╚██╗██╔╝██╔════╝\n";
+echo "   ╚███╔╝ ██╔██╗██║██║   ██║ ╚███╔╝ ███████╗\n";
+echo "   ██╔██╗ ██║╚████║██║   ██║ ██╔██╗ ╚════██║\n";
+echo "  ██╔╝╚██╗██║ ╚███║╚██████╔╝██╔╝╚██╗███████║\n";
+echo "  ╚═╝  ╚═╝╚═╝  ╚══╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝" . C_RESET . "\n";
+echo C_GRAY . "  MTProto PHP · Tester Fitur Lengkap\n" . C_RESET;
+echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n";
 
 TelegramClient::setSessionsDir($sessionsDir);
 $client = TelegramClient::create($API_ID, $API_HASH, $sessionFile);
 
 if ($sessionFile) {
-    echo "  Session : $sessionFile\n";
-    echo "  Menghubungkan...\n";
-    // Coba pakai sesi yang ada — kalau sudah auth, langsung lanjut
+    echo C_GRAY . "  Session  : " . C_RESET . basename($sessionFile) . "\n";
+    echo C_GRAY . "  Status   : " . C_RESET . "Menghubungkan...\n";
     try {
         $client->start();
     } catch (\Throwable $e) {
-        // Sesi kadaluarsa atau tidak valid — minta login ulang
-        echo "  ⚠️   Sesi tidak valid atau kadaluarsa: " . $e->getMessage() . "\n";
+        echo "  " . C_YELLOW . "⚠  Sesi tidak valid: " . $e->getMessage() . C_RESET . "\n";
         $sessionFile = null;
     }
 }
 
 if (!$sessionFile) {
-    // Tidak ada sesi atau sesi gagal — lakukan login baru
     echo "\n";
-    baris(60, '─');
-    echo "  LOGIN BARU\n";
-    baris(60, '─');
+    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+    echo C_BOLD . C_CYAN . "  LOGIN BARU\n" . C_RESET;
+    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
     $phone = inp("  Nomor telepon (contoh: +628123456789): ");
     if (empty(trim($phone))) {
-        die("[ERROR] Nomor telepon tidak boleh kosong.\n");
+        die(C_RED . "[ERROR] Nomor telepon tidak boleh kosong.\n" . C_RESET);
     }
     try {
         $client->start(phone: $phone);
     } catch (\Throwable $e) {
-        die("[ERROR] Login gagal: " . $e->getMessage() . "\n");
+        die(C_RED . "[ERROR] Login gagal: " . $e->getMessage() . "\n" . C_RESET);
     }
 }
 
 $me = coba(fn() => $client->getMe());
 if ($me) {
-    echo "  ✅  Login : " . ($me['first_name'] ?? '') . " " . ($me['last_name'] ?? '') . " (ID: {$me['id']})\n";
+    $nama = trim(($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''));
+    echo "  " . C_GREEN . C_BOLD . "✓ Login" . C_RESET . "  " . C_WHITE . $nama . C_RESET;
+    echo C_GRAY . "  (ID: {$me['id']})" . C_RESET . "\n";
 } else {
-    die("[ERROR] Gagal mengambil info akun setelah login.\n");
+    die(C_RED . "[ERROR] Gagal mengambil info akun setelah login.\n" . C_RESET);
 }
-baris(60, '═');
+echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SUBMENUS
@@ -380,19 +404,21 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
 {
     while (true) {
         judul("1. Manajemen Akun");
-        echo "  [1]  Info akun saya\n";
-        echo "  [2]  Edit nama depan / nama belakang / bio\n";
-        echo "  [3]  Edit username\n";
-        echo "  [4]  Upload foto profil\n";
-        echo "  [5]  Lihat foto profil\n";
-        echo "  [6]  Hapus foto profil\n";
-        echo "  [7]  Lihat sesi aktif\n";
-        echo "  [8]  Hapus sesi tertentu\n";
-        echo "  [9]  Keluar semua sesi lain\n";
-        echo "  [10] Lihat pengaturan privasi\n";
-        echo "  [11] Ubah pengaturan privasi\n";
-        echo "  [12] Cabut session lokal (.session file)\n";
-        echo "  [0]  Kembali\n\n";
+        mi('1',  'Info akun saya');
+        mi('2',  'Edit nama depan / nama belakang / bio');
+        mi('3',  'Edit username');
+        mi('4',  'Upload foto profil');
+        mi('5',  'Lihat foto profil');
+        mi('6',  'Hapus foto profil');
+        mi('7',  'Lihat sesi aktif');
+        mi('8',  'Hapus sesi tertentu');
+        mi('9',  'Keluar semua sesi lain');
+        mi('10', 'Lihat pengaturan privasi');
+        mi('11', 'Ubah pengaturan privasi');
+        mi('12', 'Cabut session lokal (.session file)');
+        echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+        mi('0',  'Kembali', true);
+        echo "\n";
 
         switch (inp("Pilih: ")) {
 
@@ -672,17 +698,19 @@ function menu_pesan(TelegramClient $c): void
 {
     while (true) {
         judul("2. Pesan & Chat");
-        echo "  [1]  Kirim pesan teks\n";
-        echo "  [2]  Lihat riwayat chat\n";
-        echo "  [3]  Edit pesan\n";
-        echo "  [4]  Hapus pesan\n";
-        echo "  [5]  Forward pesan\n";
-        echo "  [6]  Cari pesan dalam chat\n";
-        echo "  [7]  Cari pesan global\n";
-        echo "  [8]  Pin pesan\n";
-        echo "  [9]  Unpin pesan\n";
-        echo "  [10] Kirim polling\n";
-        echo "  [0]  Kembali\n\n";
+        mi('1',  'Kirim pesan teks');
+        mi('2',  'Lihat riwayat chat');
+        mi('3',  'Edit pesan');
+        mi('4',  'Hapus pesan');
+        mi('5',  'Forward pesan');
+        mi('6',  'Cari pesan dalam chat');
+        mi('7',  'Cari pesan global');
+        mi('8',  'Pin pesan');
+        mi('9',  'Unpin pesan');
+        mi('10', 'Kirim polling');
+        echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+        mi('0',  'Kembali', true);
+        echo "\n";
 
         switch (inp("Pilih: ")) {
 
@@ -844,13 +872,15 @@ function menu_media(TelegramClient $c, string $assetPhoto, string $assetDoc, str
 {
     while (true) {
         judul("3. Media");
-        echo "  [1]  Kirim foto\n";
-        echo "  [2]  Kirim video\n";
-        echo "  [3]  Kirim audio / MP3\n";
-        echo "  [4]  Kirim dokumen\n";
-        echo "  [5]  Kirim pesan suara (voice)\n";
-        echo "  [6]  Download media dari riwayat chat\n";
-        echo "  [0]  Kembali\n\n";
+        mi('1', 'Kirim foto');
+        mi('2', 'Kirim video');
+        mi('3', 'Kirim audio / MP3');
+        mi('4', 'Kirim dokumen');
+        mi('5', 'Kirim pesan suara (voice)');
+        mi('6', 'Download media dari riwayat chat');
+        echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+        mi('0', 'Kembali', true);
+        echo "\n";
 
         switch (inp("Pilih: ")) {
 
@@ -959,12 +989,14 @@ function menu_kontak(TelegramClient $c): void
 {
     while (true) {
         judul("4. Kontak & Dialog");
-        echo "  [1]  Lihat semua dialog\n";
-        echo "  [2]  Lihat daftar kontak\n";
-        echo "  [3]  Info lengkap pengguna\n";
-        echo "  [4]  Info lengkap chat\n";
-        echo "  [5]  Info lengkap channel\n";
-        echo "  [0]  Kembali\n\n";
+        mi('1', 'Lihat semua dialog');
+        mi('2', 'Lihat daftar kontak');
+        mi('3', 'Info lengkap pengguna');
+        mi('4', 'Info lengkap chat');
+        mi('5', 'Info lengkap channel');
+        echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+        mi('0', 'Kembali', true);
+        echo "\n";
 
         switch (inp("Pilih: ")) {
 
@@ -1060,26 +1092,28 @@ function menu_grup(TelegramClient $c): void
 {
     while (true) {
         judul("5. Grup & Channel");
-        echo "  [1]  Buat grup biasa\n";
-        echo "  [2]  Buat supergroup\n";
-        echo "  [3]  Buat channel broadcast\n";
-        echo "  [4]  Gabung channel (username/link)\n";
-        echo "  [5]  Keluar channel/supergroup\n";
-        echo "  [6]  Undang anggota ke channel/supergroup\n";
-        echo "  [7]  Tambah anggota ke grup biasa\n";
-        echo "  [8]  Promosi admin\n";
-        echo "  [9]  Turunkan admin\n";
-        echo "  [10] Ban anggota\n";
-        echo "  [11] Unban anggota\n";
-        echo "  [12] Kick anggota\n";
-        echo "  [13] Export link undangan\n";
-        echo "  [14] Slow mode\n";
-        echo "  [15] Edit judul\n";
-        echo "  [16] Edit deskripsi\n";
-        echo "  [17] Lihat anggota channel/supergroup\n";
-        echo "  [18] Hapus grup/channel\n";
-        echo "  [19] Lihat anggota grup biasa\n";
-        echo "  [0]  Kembali\n\n";
+        mi('1',  'Buat grup biasa');
+        mi('2',  'Buat supergroup');
+        mi('3',  'Buat channel broadcast');
+        mi('4',  'Gabung channel (username/link)');
+        mi('5',  'Keluar channel/supergroup');
+        mi('6',  'Undang anggota ke channel/supergroup');
+        mi('7',  'Tambah anggota ke grup biasa');
+        mi('8',  'Promosi admin');
+        mi('9',  'Turunkan admin');
+        mi('10', 'Ban anggota');
+        mi('11', 'Unban anggota');
+        mi('12', 'Kick anggota');
+        mi('13', 'Export link undangan');
+        mi('14', 'Slow mode');
+        mi('15', 'Edit judul');
+        mi('16', 'Edit deskripsi');
+        mi('17', 'Lihat anggota channel/supergroup');
+        mi('18', 'Hapus grup/channel');
+        mi('19', 'Lihat anggota grup biasa');
+        echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+        mi('0',  'Kembali', true);
+        echo "\n";
 
         switch (inp("Pilih: ")) {
 
@@ -1321,9 +1355,11 @@ function menu_bot(TelegramClient $c): void
 {
     while (true) {
         judul("6. Bot & Interaksi");
-        echo "  [1]  Mulai bot dengan /start\n";
-        echo "  [2]  Klik tombol inline dari pesan\n";
-        echo "  [0]  Kembali\n\n";
+        mi('1', 'Mulai bot dengan /start');
+        mi('2', 'Klik tombol inline dari pesan');
+        echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+        mi('0', 'Kembali', true);
+        echo "\n";
 
         switch (inp("Pilih: ")) {
 
@@ -1383,76 +1419,14 @@ function menu_event(TelegramClient $c): void
 {
     while (true) {
         judul("7. Update & Event");
-        echo "  [1]  Poll sekali (cek update terbaru)\n";
-        echo "  [2]  Listen pesan masuk (filter kata kunci)\n";
-        echo "  [3]  Listen SEMUA update mentah\n";
-        echo "  [4]  Mode Chat Realtime (buka chat + kirim & balas)\n";
-        echo "  [0]  Kembali\n\n";
+        mi('1', 'Mode Chat Realtime');
+        echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+        mi('0', 'Kembali', true);
+        echo "\n";
 
         switch (inp("Pilih: ")) {
 
-            case '1': // ── Poll sekali
-                subjudul("Poll Sekali");
-                echo "  Menunggu update (timeout 3 detik)...\n";
-                $ada = coba(fn() => $c->pollOnce(3));
-                if ($ada) ok("Ada update diterima.");
-                else       info("Tidak ada update baru.");
-                jeda();
-                break;
-
-            case '2': // ── Listen dengan filter
-                subjudul("Listen Pesan Masuk (Ctrl+C untuk berhenti)");
-                $kw = inp("  Filter kata kunci (kosong = semua pesan): ");
-                echo "\n  Mendengarkan pesan baru... tekan Ctrl+C untuk berhenti.\n\n";
-                $filter = new NewMessage(
-                    pattern: $kw !== '' ? $kw : null
-                );
-                $c->on($filter, function ($event) {
-                    $msg = $event->message;
-                    printf("  [%s] %s: %s\n",
-                        date('H:i:s'),
-                        $msg['from_name'] ?? ('ID:' . ($msg['from_id'] ?? '?')),
-                        substr($msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']'), 0, 80)
-                    );
-                });
-                coba(fn() => $c->runUntilDisconnected());
-                break;
-
-            case '3': // ── Listen raw update
-                subjudul("Listen Semua Update Mentah (Ctrl+C untuk berhenti)");
-                echo "\n  Mendengarkan update... tekan Ctrl+C untuk berhenti.\n\n";
-                $c->onUpdate(function ($event) {
-                    $detail = '';
-                    switch ($event->type) {
-                        case 'new_message':
-                            $m      = $event->message;
-                            $from   = $m->fromUserId ? "dari ID:{$m->fromUserId}" : "(outgoing)";
-                            $teks   = substr($m->text ?? '[media/service]', 0, 60);
-                            $detail = "$from | \"{$teks}\"";
-                            break;
-                        case 'edit_message':
-                            $m      = $event->message;
-                            $detail = "msg_id:{$m->id} teks baru: " . substr($m->text ?? '', 0, 50);
-                            break;
-                        case 'delete_messages':
-                            $detail = "ids: " . implode(',', $event->ids ?? []);
-                            break;
-                        case 'user_status':
-                            $detail = "user_id:{$event->user_id} " . ($event->online ? 'ONLINE' : 'offline');
-                            break;
-                        case 'read_history':
-                            $detail = "max_id:{$event->max_id} arah:{$event->direction}";
-                            break;
-                        default:
-                            $detail = substr(json_encode($event->data), 0, 100);
-                    }
-                    printf("  [%s] %-20s %s\n", date('H:i:s'), $event->type, $detail);
-                    flush();
-                });
-                coba(fn() => $c->runUntilDisconnected());
-                break;
-
-            case '4': // ── Mode Chat Realtime
+            case '1': // ── Mode Chat Realtime
                 chat_realtime($c);
                 break;
 
@@ -1523,22 +1497,26 @@ function chat_realtime(TelegramClient $c): void
     $history = coba(fn() => $c->getHistory($inputPeer, 10));
     if ($history) {
         foreach (array_reverse($history) as $msg) {
-            $from = $msg['from_name'] ?? 'Saya';
+            $isMine = !empty($msg['out']);
+            $from = $msg['from_name'] ?? ($isMine ? 'Saya' : $namaPeer);
             $teks = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
             $time = !empty($msg['date']) ? date('H:i:s', (int)$msg['date']) : '--:--:--';
-            printf("  [%s] %-20s %s\n", $time, $from . ':', substr($teks, 0, 80));
+            $nameClr = $isMine ? C_GREEN : C_CYAN;
+            echo "  " . C_GRAY . "[$time]" . C_RESET . " "
+               . $nameClr . C_BOLD . sprintf("%-18s", $from . ':') . C_RESET . " "
+               . substr($teks, 0, 70) . "\n";
         }
     } else {
         info("Tidak ada riwayat pesan.");
     }
 
     echo "\n";
-    baris(60, '─');
-    echo "  Chat: $namaPeer  |  Perintah:\n";
-    echo "  /r [teks]   — balas pesan terakhir yang diterima\n";
-    echo "  /quit       — keluar dari mode chat\n";
-    baris(60, '─');
-    echo "\n";
+    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+    echo "  " . C_BOLD . C_WHITE . "Chat:" . C_RESET . " " . C_CYAN . $namaPeer . C_RESET
+       . C_GRAY . "  |  Perintah:" . C_RESET . "\n";
+    echo C_GRAY . "  /r [teks]" . C_RESET . "   — balas pesan terakhir yang diterima\n";
+    echo C_GRAY . "  /quit    " . C_RESET . "   — keluar dari mode chat\n";
+    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n\n";
 
     // 3. Daftarkan event handler untuk pesan masuk
     //    Bersihkan handler lama agar tidak menumpuk saat mode ini dipanggil ulang
@@ -1574,19 +1552,21 @@ function chat_realtime(TelegramClient $c): void
 
         // Hapus baris prompt yang sedang aktif, cetak pesan, tulis ulang prompt
         echo "\r\033[K";
-        printf("  [%s] %-20s %s\n", $time, $from . ':', substr($teks, 0, 80));
+        echo "  " . C_GRAY . "[$time]" . C_RESET . " "
+           . C_CYAN . C_BOLD . sprintf("%-18s", $from . ':') . C_RESET . " "
+           . $teks . "\n";
 
         $lastMsgId   = $msg->id;
         $lastMsgFrom = $from;
 
         // Tulis ulang prompt + isi buffer yang sedang diketik
-        echo "  >> " . $inputBuffer;
+        echo C_GRAY . "  » " . C_RESET . $inputBuffer;
         flush();
     });
 
     // 4. Loop non-blocking: poll update + baca stdin karakter per karakter
     stream_set_blocking(STDIN, false);
-    echo "  >> ";
+    echo C_GRAY . "  » " . C_RESET;
     flush();
 
     $jalan = true;
@@ -1621,7 +1601,7 @@ function chat_realtime(TelegramClient $c): void
             }
 
             if ($input === '') {
-                echo "  >> ";
+                echo C_GRAY . "  » " . C_RESET;
                 flush();
                 continue;
             }
@@ -1634,7 +1614,7 @@ function chat_realtime(TelegramClient $c): void
                     $replyTo = $lastMsgId;
                 } else {
                     err("Belum ada pesan yang diterima untuk dibalas.");
-                    echo "  >> ";
+                    echo C_GRAY . "  » " . C_RESET;
                     flush();
                     continue;
                 }
@@ -1643,12 +1623,14 @@ function chat_realtime(TelegramClient $c): void
             // Kirim pesan
             $res = coba(fn() => $c->sendMessage($inputPeer, $input, $replyTo));
             if ($res) {
-                $timeStr = date('H:i:s');
-                $replyInfo = $replyTo ? " (↩ #$replyTo {$lastMsgFrom})" : '';
-                printf("  [%s] %-20s %s%s\n", $timeStr, 'Saya:', $input, $replyInfo);
+                $timeStr   = date('H:i:s');
+                $replyInfo = $replyTo ? C_GRAY . " (↩ {$lastMsgFrom})" . C_RESET : '';
+                echo "  " . C_GRAY . "[$timeStr]" . C_RESET . " "
+                   . C_GREEN . C_BOLD . sprintf("%-18s", 'Saya:') . C_RESET . " "
+                   . $input . $replyInfo . "\n";
             }
 
-            echo "  >> ";
+            echo C_GRAY . "  » " . C_RESET;
             flush();
 
         } elseif ($ch === "\x7f" || $ch === "\x08") {
@@ -1686,20 +1668,19 @@ function chat_realtime(TelegramClient $c): void
 
 while (true) {
     echo "\n";
-    baris(60, '═');
-    echo "  MENU UTAMA — XNOXSPROTO TESTER\n";
-    baris(60, '═');
-    echo "  [1]  Manajemen Akun\n";
-    echo "  [2]  Pesan & Chat\n";
-    echo "  [3]  Media\n";
-    echo "  [4]  Kontak & Dialog\n";
-    echo "  [5]  Grup & Channel\n";
-    echo "  [6]  Bot & Interaksi\n";
-    echo "  [7]  Update & Event\n";
-    baris(60, '─');
-    echo "  [0]  Keluar\n";
-    baris(60, '═');
-    echo "\n";
+    echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n";
+    echo C_BOLD . C_WHITE . "  MENU UTAMA " . C_RESET . C_GRAY . "— XnoxsProto Tester" . C_RESET . "\n";
+    echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n";
+    mi('1', 'Manajemen Akun');
+    mi('2', 'Pesan & Chat');
+    mi('3', 'Media');
+    mi('4', 'Kontak & Dialog');
+    mi('5', 'Grup & Channel');
+    mi('6', 'Bot & Interaksi');
+    mi('7', 'Update & Event');
+    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
+    mi('0', 'Keluar', true);
+    echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n\n";
 
     switch (inp("Pilih menu: ")) {
         case '1': menu_akun($client, $sessionsDir, $sessionFile ?? ''); break;

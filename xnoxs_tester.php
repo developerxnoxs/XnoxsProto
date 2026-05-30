@@ -23,12 +23,15 @@ if (!$API_ID || !$API_HASH) {
     die("[ERROR] Set TG_API_ID dan TG_API_HASH terlebih dahulu.\n");
 }
 
-// ── Cari session ───────────────────────────────────────────────────────────
-$sessions = glob(__DIR__ . '/sessions/*.session') ?: [];
-if (empty($sessions)) {
-    die("[ERROR] Tidak ada file sesi di sessions/. Jalankan php interactive_login.php terlebih dahulu.\n");
-}
-$sessionFile = $sessions[0];
+// ── Cari session yang sudah ada ────────────────────────────────────────────
+$sessionsDir = __DIR__ . '/sessions';
+@mkdir($sessionsDir, 0755, true);
+
+$sessionFiles = array_merge(
+    glob($sessionsDir . '/*.session') ?: [],
+    glob($sessionsDir . '/*.json')    ?: []
+);
+$sessionFile = !empty($sessionFiles) ? $sessionFiles[0] : null;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
@@ -332,21 +335,52 @@ $ASSET_DOC   = __DIR__ . '/test_assets/test_doc.txt';
 $ASSET_AUDIO = __DIR__ . '/test_assets/test_audio.mp3';
 
 // ══════════════════════════════════════════════════════════════════════════════
-// KONEKSI
+// KONEKSI & LOGIN OTOMATIS
 // ══════════════════════════════════════════════════════════════════════════════
 
 echo "\n";
 baris(60, '═');
 echo "  XNOXSPROTO — TESTER FITUR LENGKAP\n";
 baris(60, '═');
-echo "  Session : $sessionFile\n";
-echo "  Menghubungkan...\n";
 
+TelegramClient::setSessionsDir($sessionsDir);
 $client = TelegramClient::create($API_ID, $API_HASH, $sessionFile);
-coba(fn() => $client->connect());
+
+if ($sessionFile) {
+    echo "  Session : $sessionFile\n";
+    echo "  Menghubungkan...\n";
+    // Coba pakai sesi yang ada — kalau sudah auth, langsung lanjut
+    try {
+        $client->start();
+    } catch (\Throwable $e) {
+        // Sesi kadaluarsa atau tidak valid — minta login ulang
+        echo "  ⚠️   Sesi tidak valid atau kadaluarsa: " . $e->getMessage() . "\n";
+        $sessionFile = null;
+    }
+}
+
+if (!$sessionFile) {
+    // Tidak ada sesi atau sesi gagal — lakukan login baru
+    echo "\n";
+    baris(60, '─');
+    echo "  LOGIN BARU\n";
+    baris(60, '─');
+    $phone = inp("  Nomor telepon (contoh: +628123456789): ");
+    if (empty(trim($phone))) {
+        die("[ERROR] Nomor telepon tidak boleh kosong.\n");
+    }
+    try {
+        $client->start(phone: $phone);
+    } catch (\Throwable $e) {
+        die("[ERROR] Login gagal: " . $e->getMessage() . "\n");
+    }
+}
+
 $me = coba(fn() => $client->getMe());
 if ($me) {
-    echo "  Login   : " . ($me['first_name'] ?? '') . " " . ($me['last_name'] ?? '') . " (ID: {$me['id']})\n";
+    echo "  ✅  Login : " . ($me['first_name'] ?? '') . " " . ($me['last_name'] ?? '') . " (ID: {$me['id']})\n";
+} else {
+    die("[ERROR] Gagal mengambil info akun setelah login.\n");
 }
 baris(60, '═');
 

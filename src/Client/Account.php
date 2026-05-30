@@ -277,20 +277,27 @@ class Account
         $r->readInt(); // vector ctor for rules
         $rCount = $r->readInt();
         $rules  = [];
+        // Rule constructors yang membawa Vector<long> extra field
+        $ctorsWithUsers = [
+            0xb8905fb2, // privacyValueAllowUsers
+            0xe4621141, // privacyValueDisallowUsers
+        ];
+        $ctorsWithChats = [
+            0x6b134e8e, // privacyValueAllowChatParticipants
+            0x41c87565, // privacyValueDisallowChatParticipants
+        ];
         for ($i = 0; $i < $rCount; $i++) {
             $rCtor   = $r->readInt();
             $rules[] = $this->ruleCtorToString($rCtor);
-        }
-
-        // Skip users vector
-        try {
-            $r->readInt();
-            $uCount = $r->readInt();
-            for ($i = 0; $i < $uCount; $i++) {
-                $r->readInt(); // ctor
-                // Skip user fields (variable length) — simplified
+            // Skip extra Vector<long> agar stream position tetap benar
+            if (in_array($rCtor, $ctorsWithUsers, true) || in_array($rCtor, $ctorsWithChats, true)) {
+                try {
+                    $r->readInt(); // vector ctor
+                    $vCount = $r->readInt();
+                    for ($j = 0; $j < $vCount; $j++) $r->readLong();
+                } catch (\Throwable) {}
             }
-        } catch (\Exception $e) {}
+        }
 
         return ['rules' => $rules];
     }

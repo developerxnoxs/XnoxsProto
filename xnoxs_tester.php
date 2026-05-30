@@ -527,10 +527,27 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 $pick = pilihList($keyItems, "Pilih jenis privasi");
                 if ($pick) {
                     $res = coba(fn() => $c->getAccount()->getPrivacy($pick['data']));
-                    if ($res) {
-                        info("Pengaturan: " . ($res['setting'] ?? 'unknown'));
-                        if (!empty($res['allow_users']))  info("Allow users : " . implode(', ', $res['allow_users']));
-                        if (!empty($res['disallow_users'])) info("Disallow   : " . implode(', ', $res['disallow_users']));
+                    if ($res && !empty($res['rules'])) {
+                        $labelMap = [
+                            'allow_all'                  => 'Semua orang',
+                            'allow_contacts'             => 'Hanya kontak',
+                            'allow_close_friends'        => 'Teman dekat saja',
+                            'allow_premium'              => 'Pengguna Premium saja',
+                            'allow_bots'                 => 'Bot saja',
+                            'allow_users'                => 'Pengguna tertentu (allow)',
+                            'allow_chat_participants'    => 'Anggota chat tertentu (allow)',
+                            'disallow_all'               => 'Tidak ada',
+                            'disallow_contacts'          => 'Kecuali kontak',
+                            'disallow_bots'              => 'Kecuali bot',
+                            'disallow_users'             => 'Pengguna tertentu (block)',
+                            'disallow_chat_participants' => 'Anggota chat tertentu (block)',
+                        ];
+                        foreach ($res['rules'] as $rule) {
+                            $tampil = $labelMap[$rule] ?? $rule;
+                            info("Aturan: $tampil");
+                        }
+                    } elseif ($res !== null) {
+                        info("Tidak ada aturan privasi yang tersimpan.");
                     }
                 }
                 jeda();

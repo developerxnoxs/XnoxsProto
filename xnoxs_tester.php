@@ -1387,6 +1387,7 @@ function menu_event(TelegramClient $c): void
         echo "  [1]  Poll sekali (cek update terbaru)\n";
         echo "  [2]  Listen pesan masuk (filter kata kunci)\n";
         echo "  [3]  Listen SEMUA update mentah\n";
+        echo "  [4]  Mode Chat Realtime (buka chat + kirim & balas)\n";
         echo "  [0]  Kembali\n\n";
 
         switch (inp("Pilih: ")) {
@@ -1452,9 +1453,175 @@ function menu_event(TelegramClient $c): void
                 coba(fn() => $c->runUntilDisconnected());
                 break;
 
+            case '4': // ── Mode Chat Realtime
+                chat_realtime($c);
+                break;
+
             case '0': return;
         }
     }
+}
+
+// ─── Mode Chat Realtime ───────────────────────────────────────────────────
+function chat_realtime(TelegramClient $c): void
+{
+    judul("Mode Chat Realtime");
+
+    // 1. Pilih chat tujuan
+    $dialog = pilihDialog($c, 'Pilih chat yang akan dibuka');
+    if (!$dialog) return;
+
+    $peerId   = $dialog['id'];
+    $namaPeer = trim(($dialog['title'] ?? '') ?: ($dialog['username'] ?? "ID:$peerId"));
+
+    // 2. Tampilkan 10 pesan terakhir sebagai konteks
+    subjudul("Riwayat 10 Pesan Terakhir — $namaPeer");
+    $history = coba(fn() => $c->getMessages($peerId, 10));
+    if ($history) {
+        foreach (array_reverse($history) as $msg) {
+            $from = $msg['from_name'] ?? 'Saya';
+            $teks = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
+            $time = isset($msg['date']) ? date('H:i:s', $msg['date']) : '--:--:--';
+            printf("  [%s] %-20s %s\n", $time, $from . ':', substr($teks, 0, 80));
+        }
+    } else {
+        info("Tidak ada riwayat pesan.");
+    }
+
+    echo "\n";
+    baris(60, '─');
+    echo "  Chat: $namaPeer  |  Perintah:\n";
+    echo "  /r [teks]   — balas pesan terakhir yang diterima\n";
+    echo "  /quit       — keluar dari mode chat\n";
+    baris(60, '─');
+    echo "\n";
+
+    // 3. Daftarkan event handler untuk pesan masuk
+    //    Bersihkan handler lama agar tidak menumpuk saat mode ini dipanggil ulang
+    $c->removeHandlers();
+
+    $lastMsgId   = null;
+    $lastMsgFrom = null;
+    $inputBuffer = '';
+
+    $c->on(new NewMessage(), function ($event) use (
+        $peerId, &$lastMsgId, &$lastMsgFrom, &$inputBuffer
+    ) {
+        $msg  = $event->message;
+        $from = $msg['from_name'] ?? ('ID:' . ($msg['from_id'] ?? '?'));
+        $teks = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
+        $time = date('H:i:s');
+        $replyInfo = '';
+        if (!empty($msg['reply_to_msg_id'])) {
+            $replyInfo = " (↩ #" . $msg['reply_to_msg_id'] . ")";
+        }
+
+        // Hapus baris prompt yang sedang aktif, cetak pesan, tulis ulang prompt
+        echo "\r\033[K";
+        printf("  [%s] %-20s %s%s\n", $time, $from . ':', substr($teks, 0, 80), $replyInfo);
+
+        $lastMsgId   = $msg['id'] ?? null;
+        $lastMsgFrom = $from;
+
+        // Tulis ulang prompt + isi buffer yang sedang diketik
+        echo "  >> " . $inputBuffer;
+        flush();
+    });
+
+    // 4. Loop non-blocking: poll update + baca stdin karakter per karakter
+    stream_set_blocking(STDIN, false);
+    echo "  >> ";
+    flush();
+
+    $jalan = true;
+    if (function_exists('pcntl_signal')) {
+        pcntl_signal(SIGINT, function () use (&$jalan) { $jalan = false; });
+    }
+
+    while ($jalan) {
+        if (function_exists('pcntl_signal_dispatch')) {
+            pcntl_signal_dispatch();
+        }
+
+        // Poll update dari Telegram (non-blocking, timeout=0)
+        try { $c->pollOnce(0); } catch (\Throwable) {}
+
+        // Baca satu karakter dari stdin (non-blocking)
+        $ch = fgetc(STDIN);
+        if ($ch === false) {
+            usleep(30_000); // 30ms jeda agar CPU tidak penuh
+            continue;
+        }
+
+        if ($ch === "\n") {
+            // ── Enter: proses perintah / kirim pesan ──────────────────────
+            $input = trim($inputBuffer);
+            $inputBuffer = '';
+            echo "\n";
+
+            if ($input === '/quit' || $input === '/keluar') {
+                $jalan = false;
+                break;
+            }
+
+            if ($input === '') {
+                echo "  >> ";
+                flush();
+                continue;
+            }
+
+            // Cek apakah perintah balas (/r teks)
+            $replyTo = null;
+            if (preg_match('/^\/r\s+(.+)$/su', $input, $m)) {
+                if ($lastMsgId !== null) {
+                    $input   = $m[1];
+                    $replyTo = $lastMsgId;
+                } else {
+                    err("Belum ada pesan yang diterima untuk dibalas.");
+                    echo "  >> ";
+                    flush();
+                    continue;
+                }
+            }
+
+            // Kirim pesan
+            $res = coba(fn() => $c->sendMessage($peerId, $input, $replyTo));
+            if ($res) {
+                $timeStr = date('H:i:s');
+                $replyInfo = $replyTo ? " (↩ #$replyTo {$lastMsgFrom})" : '';
+                printf("  [%s] %-20s %s%s\n", $timeStr, 'Saya:', $input, $replyInfo);
+            }
+
+            echo "  >> ";
+            flush();
+
+        } elseif ($ch === "\x7f" || $ch === "\x08") {
+            // ── Backspace ─────────────────────────────────────────────────
+            if ($inputBuffer !== '') {
+                $inputBuffer = mb_substr($inputBuffer, 0, -1);
+                echo "\x08 \x08";
+                flush();
+            }
+
+        } elseif ($ch === "\x03") {
+            // ── Ctrl+C eksplisit (jika pcntl tidak tersedia) ──────────────
+            $jalan = false;
+            break;
+
+        } elseif (ord($ch) >= 32 || $ch === "\t") {
+            // ── Karakter biasa: tambahkan ke buffer dan echo ───────────────
+            $inputBuffer .= $ch;
+            echo $ch;
+            flush();
+        }
+    }
+
+    // Kembalikan stdin ke mode blocking
+    stream_set_blocking(STDIN, true);
+
+    echo "\n\n";
+    ok("Keluar dari mode chat realtime.");
+    jeda();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

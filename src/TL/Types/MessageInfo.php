@@ -21,7 +21,8 @@ use XnoxsProto\TL\Parser\TLSkipHelper;
  */
 class MessageInfo
 {
-    const CONSTRUCTOR_EMPTY            = 0x76a6d327;
+    const CONSTRUCTOR_EMPTY            = 0x76a6d327; // lama
+    const CONSTRUCTOR_EMPTY_NEW        = 0x90a6ca84; // TDLib terkini (flags:# id:int peer_id:f.0?Peer)
     const CONSTRUCTOR_MESSAGE          = 0x9815cec8; // layer 185+, has flags2
     const CONSTRUCTOR_MESSAGE_OLD      = 0x94345242; // legacy, NO flags2
     const CONSTRUCTOR_SERVICE_OLD      = 0x2357bf25; // old service (has extra flags2 word)
@@ -46,6 +47,7 @@ class MessageInfo
 
         switch ($constructor) {
             case self::CONSTRUCTOR_EMPTY:
+            case self::CONSTRUCTOR_EMPTY_NEW: // 0x90a6ca84 — TDLib terkini, layout field sama
                 $obj->type = 'empty';
                 $flags = $reader->readInt();
                 $obj->id = $reader->readInt();
@@ -53,6 +55,7 @@ class MessageInfo
                 break;
 
             case self::CONSTRUCTOR_MESSAGE:
+            case 0x95ef6f2b: // message — hash baru TDLib (sama + bool flags2.8/2.9, parser tidak berubah)
                 $obj->type = 'message';
                 self::parseMessageNew($reader, $obj);
                 break;

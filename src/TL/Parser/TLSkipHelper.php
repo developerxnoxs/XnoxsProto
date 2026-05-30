@@ -1284,141 +1284,356 @@ class TLSkipHelper
     }
 
     // =========================================================================
-    // MessageAction — many subtypes for service messages
+    // MessageAction — semua subtipe dari TDLib telegram_api.tl (hash diverifikasi)
     // =========================================================================
     public static function skipMessageAction(BinaryReader $r): void
     {
         $c = $r->readInt();
         switch ($c) {
-            case 0xb6aef7b0: // messageActionEmpty — no fields
+            // ── Kosong ────────────────────────────────────────────────────────
+            case 0xb6aef7b0: // messageActionEmpty
                 break;
 
-            // ── Chat/Group actions ────────────────────────────────────────────
-            case 0x55555550: // messageActionChatCreate title:string users:Vector<long>
+            // ── Buat/Edit grup/channel ────────────────────────────────────────
+            case 0xbd47cbad: // messageActionChatCreate title:string users:Vector<long>
                 $r->readString();
                 self::skipVectorLongRaw($r);
                 break;
+            case 0x95d2ac92: // messageActionChannelCreate title:string
             case 0xb5a1ce5a: // messageActionChatEditTitle title:string
-            case 0x76b9f11a: // messageActionCustomAction message:string
+            case 0xfae69f56: // messageActionCustomAction message:string
             case 0xb4c38cb5: // messageActionWebViewDataSent text:string
                 $r->readString();
                 break;
-            case 0x3e5a2e55: // messageActionWebViewDataSentMe text:string data:string
+            case 0x47dd8079: // messageActionWebViewDataSentMe text:string data:string
                 $r->readString();
                 $r->readString();
                 break;
-            case 0x7fcb13a4: // messageActionChatEditPhoto photo:Photo
+            case 0x7fcb13a8: // messageActionChatEditPhoto photo:Photo
             case 0x57de635e: // messageActionSuggestProfilePhoto photo:Photo
                 self::skipPhoto($r);
                 break;
-            case 0x95e3fbef: // messageActionChatDeletePhoto — no fields
-            case 0x94bd38ed: // messageActionPinMessage — no fields
-            case 0x9fbab604: // messageActionHistoryClear — no fields
-            case 0x47dd8079: // messageActionScreenshotTaken — no fields
-            case 0xfae69f56: // messageActionContactSignUp — no fields
-            case 0xebbca3cb: // messageActionChatJoinedByRequest — no fields
+
+            // ── Event tanpa data ──────────────────────────────────────────────
+            case 0x95e3fbef: // messageActionChatDeletePhoto
+            case 0x94bd38ed: // messageActionPinMessage
+            case 0x9fbab604: // messageActionHistoryClear
+            case 0x4792929b: // messageActionScreenshotTaken
+            case 0xf3f25f76: // messageActionContactSignUp
+            case 0xebbca3cb: // messageActionChatJoinedByRequest
                 break;
+
+            // ── Anggota grup ──────────────────────────────────────────────────
             case 0x15cefd00: // messageActionChatAddUser users:Vector<long>
                 self::skipVectorLongRaw($r);
                 break;
-            case 0x488a7337: // messageActionChatJoinedByLink inviter_id:long
-            case 0xb2ae9b0c: // messageActionChatDeleteUser user_id:long
-            case 0x7a0d7f42: // messageActionChatMigrateTo channel_id:long
+            case 0xa43f30cc: // messageActionChatDeleteUser user_id:long
+            case 0x031224c3: // messageActionChatJoinedByLink inviter_id:long
+            case 0xe1037f92: // messageActionChatMigrateTo channel_id:long
+            case 0xb07ed085: // messageActionNewCreatorPending new_creator_id:long
+            case 0xe188503b: // messageActionChangeCreator new_creator_id:long
+            case 0x16605e3e: // messageActionManagedBotCreated bot_id:long
                 $r->readLong();
                 break;
-            case 0xe1037f92: // messageActionChannelMigrateFrom title:string chat_id:long
-                $r->readString(); $r->readLong();
-                break;
-
-            // ── Channel actions ───────────────────────────────────────────────
-            case 0x95d2ac92: // messageActionChannelCreate title:string  ← KEY FIX
+            case 0xea3948e9: // messageActionChannelMigrateFrom title:string chat_id:long
                 $r->readString();
+                $r->readLong();
                 break;
 
-            // ── Bot actions ───────────────────────────────────────────────────
-            case 0x4792929b: // messageActionBotAllowed flags:# domain:f.0?string app_id:f.2?long
-                $flags = $r->readInt();
-                if ($flags & (1 << 0)) $r->readString(); // domain
-                if ($flags & (1 << 2)) $r->readLong();   // app_id
+            // ── Skor permainan ────────────────────────────────────────────────
+            case 0x92a72876: // messageActionGameScore game_id:long score:int
+                $r->readLong();
+                $r->readInt();
                 break;
 
-            // ── Phone call ────────────────────────────────────────────────────
-            case 0x80e11a7f: // messageActionPhoneCall flags:# call_id:long reason:f.0? duration:f.1?int
+            // ── Pembayaran ────────────────────────────────────────────────────
+            case 0xffa00ccc: { // messageActionPaymentSentMe
                 $flags = $r->readInt();
-                $r->readLong(); // call_id
+                $r->readString(); // currency
+                $r->readLong();   // total_amount
+                $r->readBytes();  // payload
+                if ($flags & (1 << 0)) self::skipPaymentRequestedInfo($r);
+                if ($flags & (1 << 1)) $r->readString(); // shipping_option_id
+                self::skipPaymentCharge($r);
+                if ($flags & (1 << 4)) $r->readInt();    // subscription_until_date
+                break;
+            }
+            case 0xc624b16e: { // messageActionPaymentSent
+                $flags = $r->readInt();
+                $r->readString(); // currency
+                $r->readLong();   // total_amount
+                if ($flags & (1 << 0)) $r->readString(); // invoice_slug
+                if ($flags & (1 << 4)) $r->readInt();    // subscription_until_date
+                break;
+            }
+            case 0x41b3e202: { // messageActionPaymentRefunded
+                $flags = $r->readInt();
+                self::skipPeer($r);   // peer
+                $r->readString();     // currency
+                $r->readLong();       // total_amount
+                if ($flags & (1 << 0)) $r->readBytes(); // payload
+                self::skipPaymentCharge($r);
+                break;
+            }
+
+            // ── Telepon ───────────────────────────────────────────────────────
+            case 0x80e11a7f: { // messageActionPhoneCall flags:# call_id:long reason:f.0? duration:f.1?int
+                $flags = $r->readInt();
+                $r->readLong();
                 if ($flags & (1 << 0)) self::skipPhoneCallDiscardReason($r);
-                if ($flags & (1 << 1)) $r->readInt(); // duration
+                if ($flags & (1 << 1)) $r->readInt();
+                break;
+            }
+
+            // ── Bot ───────────────────────────────────────────────────────────
+            case 0xc516d679: { // messageActionBotAllowed flags:# domain:f.0?string app:f.2?BotApp
+                $flags = $r->readInt();
+                if ($flags & (1 << 0)) $r->readString();
+                if ($flags & (1 << 2)) self::skipBotApp($r);
+                break;
+            }
+
+            // ── Secure Values ─────────────────────────────────────────────────
+            case 0xd95c6154: // messageActionSecureValuesSent types:Vector<SecureValueType>
+                self::skipVector($r, fn($x) => $x->readInt()); // setiap tipe = 1 ctor
+                break;
+            case 0x1b287353: // messageActionSecureValuesSentMe (SecureValue terlalu kompleks)
+                throw new \RuntimeException('messageActionSecureValuesSentMe belum diimplementasi');
+
+            // ── Jarak terdekat ────────────────────────────────────────────────
+            case 0x98e0d697: { // messageActionGeoProximityReached from_id:Peer to_id:Peer distance:int
+                self::skipPeer($r);
+                self::skipPeer($r);
+                $r->readInt();
+                break;
+            }
+
+            // ── Group/Conference Call ─────────────────────────────────────────
+            case 0x7a0d7f42: { // messageActionGroupCall flags:# call:InputGroupCall duration:f.0?int
+                $flags = $r->readInt();
+                self::skipInputGroupCall($r);
+                if ($flags & (1 << 0)) $r->readInt();
+                break;
+            }
+            case 0x502f92f7: { // messageActionInviteToGroupCall call:InputGroupCall users:Vector<long>
+                self::skipInputGroupCall($r);
+                self::skipVectorLongRaw($r);
+                break;
+            }
+            case 0xb3a07661: { // messageActionGroupCallScheduled call:InputGroupCall schedule_date:int
+                self::skipInputGroupCall($r);
+                $r->readInt();
+                break;
+            }
+            case 0x2ffe2f7a: { // messageActionConferenceCall flags:# call_id:long duration:f.2?int other_participants:f.3?Vector<Peer>
+                $flags = $r->readInt();
+                $r->readLong();
+                if ($flags & (1 << 2)) $r->readInt();
+                if ($flags & (1 << 3)) self::skipVector($r, fn($x) => self::skipPeer($x));
+                break;
+            }
+
+            // ── TTL / Tema ────────────────────────────────────────────────────
+            case 0x3c134d7b: { // messageActionSetMessagesTTL flags:# period:int auto_setting_from:f.0?long
+                $flags = $r->readInt();
+                $r->readInt();
+                if ($flags & (1 << 0)) $r->readLong();
+                break;
+            }
+            case 0xb91bbd3a: // messageActionSetChatTheme theme:ChatTheme
+                self::skipChatTheme($r);
                 break;
 
-            // ── Payments / gifts ──────────────────────────────────────────────
-            case 0x622f4f29: // messageActionGiftPremium flags:# currency:string amount:long months:int ...
+            // ── Hadiah Premium ────────────────────────────────────────────────
+            case 0x48e91302: { // messageActionGiftPremium
                 $flags = $r->readInt();
                 $r->readString(); // currency
                 $r->readLong();   // amount
-                $r->readInt();    // months
+                $r->readInt();    // days
                 if ($flags & (1 << 0)) $r->readString(); // crypto_currency
                 if ($flags & (1 << 0)) $r->readLong();   // crypto_amount
+                if ($flags & (1 << 1)) self::skipTextWithEntities($r);
                 break;
-            case 0x678c2e09: // messageActionGiftCode flags:# boost_peer:f.1?Peer months:int slug:string ...
+            }
+            case 0x31c48347: { // messageActionGiftCode
                 $flags = $r->readInt();
                 if ($flags & (1 << 1)) self::skipPeer($r); // boost_peer
-                $r->readInt();    // months
+                $r->readInt();    // days
                 $r->readString(); // slug
-                if ($flags & (1 << 3)) $r->readString(); // currency
-                if ($flags & (1 << 3)) $r->readLong();   // amount
-                if ($flags & (1 << 4)) $r->readString(); // crypto_currency
-                if ($flags & (1 << 4)) $r->readLong();   // crypto_amount
+                if ($flags & (1 << 2)) $r->readString(); // currency
+                if ($flags & (1 << 2)) $r->readLong();   // amount
+                if ($flags & (1 << 3)) $r->readString(); // crypto_currency
+                if ($flags & (1 << 3)) $r->readLong();   // crypto_amount
+                if ($flags & (1 << 4)) self::skipTextWithEntities($r);
                 break;
+            }
+            case 0x45d5b021: { // messageActionGiftStars
+                $flags = $r->readInt();
+                $r->readString(); $r->readLong(); $r->readLong(); // currency, amount, stars
+                if ($flags & (1 << 0)) { $r->readString(); $r->readLong(); } // crypto_currency, amount
+                if ($flags & (1 << 1)) $r->readString(); // transaction_id
+                break;
+            }
+            case 0xa8a3c699: { // messageActionGiftTon
+                $flags = $r->readInt();
+                $r->readString(); $r->readLong(); // currency, amount
+                $r->readString(); $r->readLong(); // crypto_currency, crypto_amount
+                if ($flags & (1 << 0)) $r->readString(); // transaction_id
+                break;
+            }
+
+            // ── Star Gifts ────────────────────────────────────────────────────
+            case 0xea2c31d3: { // messageActionStarGift
+                $flags = $r->readInt();
+                self::skipStarGift($r);
+                if ($flags & (1 << 1))  self::skipTextWithEntities($r);
+                if ($flags & (1 << 4))  $r->readLong();  // convert_stars
+                if ($flags & (1 << 5))  $r->readInt();   // upgrade_msg_id
+                if ($flags & (1 << 8))  $r->readLong();  // upgrade_stars
+                if ($flags & (1 << 11)) self::skipPeer($r); // from_id
+                if ($flags & (1 << 12)) self::skipPeer($r); // peer
+                if ($flags & (1 << 12)) $r->readLong();  // saved_id
+                if ($flags & (1 << 14)) $r->readString(); // prepaid_upgrade_hash
+                if ($flags & (1 << 15)) $r->readInt();   // gift_msg_id
+                if ($flags & (1 << 18)) self::skipPeer($r); // to_id
+                if ($flags & (1 << 19)) $r->readInt();   // gift_num
+                break;
+            }
+            case 0xe6c31522: { // messageActionStarGiftUnique
+                $flags = $r->readInt();
+                self::skipStarGift($r);
+                if ($flags & (1 << 3))  $r->readInt();
+                if ($flags & (1 << 4))  $r->readLong();
+                if ($flags & (1 << 6))  self::skipPeer($r);
+                if ($flags & (1 << 7))  { self::skipPeer($r); $r->readLong(); }
+                if ($flags & (1 << 8))  self::skipStarsAmount($r);
+                if ($flags & (1 << 9))  $r->readInt();
+                if ($flags & (1 << 10)) $r->readInt();
+                if ($flags & (1 << 12)) $r->readLong();
+                if ($flags & (1 << 15)) $r->readInt();
+                break;
+            }
+            case 0x774278d4: { // messageActionStarGiftPurchaseOffer
+                $r->readInt(); // flags
+                self::skipStarGift($r);
+                self::skipStarsAmount($r);
+                $r->readInt(); // expires_at
+                break;
+            }
+            case 0x73ada76b: { // messageActionStarGiftPurchaseOfferDeclined
+                $r->readInt(); // flags
+                self::skipStarGift($r);
+                self::skipStarsAmount($r);
+                break;
+            }
+
+            // ── Bintang/Hadiah ────────────────────────────────────────────────
+            case 0xb00c47a2: { // messageActionPrizeStars
+                $r->readInt(); // flags
+                $r->readLong();   // stars
+                $r->readString(); // transaction_id
+                self::skipPeer($r);
+                $r->readInt();    // giveaway_msg_id
+                break;
+            }
 
             // ── Giveaway ──────────────────────────────────────────────────────
-            case 0x332ba9ed: // messageActionGiveawayLaunch flags:#
+            case 0xa80f51e4: { // messageActionGiveawayLaunch flags:# stars:f.0?long
                 $flags = $r->readInt();
-                if ($flags & (1 << 0)) $r->readLong(); // stars
+                if ($flags & (1 << 0)) $r->readLong();
                 break;
-            case 0x2a9fadc5: // messageActionGiveawayResults flags:# winners_count:int unclaimed_count:int
-                $r->readInt(); // flags
-                $r->readInt(); // winners_count
-                $r->readInt(); // unclaimed_count
+            }
+            case 0x87e2f155: { // messageActionGiveawayResults flags:# winners_count:int unclaimed_count:int
+                $r->readInt(); $r->readInt(); $r->readInt(); // flags, winners, unclaimed
                 break;
+            }
 
             // ── Boost ─────────────────────────────────────────────────────────
             case 0xcc02aa6d: // messageActionBoostApply boosts:int
                 $r->readInt();
                 break;
 
-            // ── Topics ────────────────────────────────────────────────────────
-            case 0xd58a08c6: // messageActionTopicCreate flags:# title:string icon_color:int icon_emoji_id:f.0?long
+            // ── Topik Forum ───────────────────────────────────────────────────
+            case 0x0d999256: { // messageActionTopicCreate
                 $flags = $r->readInt();
                 $r->readString(); $r->readInt();
                 if ($flags & (1 << 0)) $r->readLong();
                 break;
-            case 0xc0944820: // messageActionTopicEdit flags:#
+            }
+            case 0xc0944820: { // messageActionTopicEdit
                 $flags = $r->readInt();
-                if ($flags & (1 << 0)) $r->readString(); // title
-                if ($flags & (1 << 1)) $r->readInt();    // icon_emoji_id
-                if ($flags & (1 << 2)) $r->readLong();   // icon_emoji_id (long)
-                if ($flags & (1 << 3)) $r->readInt();    // hidden
+                if ($flags & (1 << 0)) $r->readString();
+                if ($flags & (1 << 1)) $r->readLong();
+                if ($flags & (1 << 2)) $r->readInt(); // closed Bool
+                if ($flags & (1 << 3)) $r->readInt(); // hidden Bool
                 break;
+            }
 
             // ── Wallpaper ─────────────────────────────────────────────────────
-            case 0x07d8c173: // messageActionSetChatWallPaper flags:# wallpaper:WallPaper
+            case 0x5060a3f4: // messageActionSetChatWallPaper flags:# wallpaper:WallPaper
                 $r->readInt(); // flags
                 self::skipWallPaper($r);
                 break;
-            case 0xde12d6d2: // messageActionSetSameChatWallPaper wallpaper:WallPaper
-                self::skipWallPaper($r);
+
+            // ── Peer yang diminta ─────────────────────────────────────────────
+            case 0x31518e9b: { // messageActionRequestedPeer button_id:int peers:Vector<Peer>
+                $r->readInt();
+                self::skipVector($r, fn($x) => self::skipPeer($x));
+                break;
+            }
+            case 0x93b31848: { // messageActionRequestedPeerSentMe button_id:int peers:Vector<RequestedPeer>
+                $r->readInt();
+                self::skipVector($r, fn($x) => self::skipRequestedPeer($x));
+                break;
+            }
+
+            // ── Pesan berbayar ────────────────────────────────────────────────
+            case 0xac1f1fcd: // messageActionPaidMessagesRefunded count:int stars:long
+                $r->readInt(); $r->readLong();
+                break;
+            case 0x84b88578: // messageActionPaidMessagesPrice flags:# stars:long
+                $r->readInt(); $r->readLong();
                 break;
 
-            // ── RequestedPeer ─────────────────────────────────────────────────
-            case 0x93b1ac66: // messageActionRequestedPeerSentMe flags:# button_id:int peers:f.0?Vector
+            // ── Todo ──────────────────────────────────────────────────────────
+            case 0xcc7c5c89: { // messageActionTodoCompletions completed:Vector<int> incompleted:Vector<int>
+                self::skipVector($r, fn($x) => $x->readInt());
+                self::skipVector($r, fn($x) => $x->readInt());
+                break;
+            }
+            case 0xc7edbc83: // messageActionTodoAppendTasks list:Vector<TodoItem>
+                self::skipVector($r, fn($x) => self::skipTodoItem($x));
+                break;
+
+            // ── Postingan Disarankan ──────────────────────────────────────────
+            case 0xee7a1596: { // messageActionSuggestedPostApproval
                 $flags = $r->readInt();
-                $r->readInt(); // button_id
-                if ($flags & (1 << 0)) self::skipVector($r, fn($x) => self::skipPeer($x));
+                if ($flags & (1 << 2)) $r->readString();
+                if ($flags & (1 << 3)) $r->readInt();
+                if ($flags & (1 << 4)) self::skipStarsAmount($r);
+                break;
+            }
+            case 0x95ddcf69: // messageActionSuggestedPostSuccess price:StarsAmount
+                self::skipStarsAmount($r);
+                break;
+            case 0x69f916f8: // messageActionSuggestedPostRefund flags:#
+                $r->readInt();
+                break;
+
+            // ── Ulang Tahun ───────────────────────────────────────────────────
+            case 0x2c8f2a25: // messageActionSuggestBirthday birthday:Birthday
+                self::skipBirthday($r);
+                break;
+
+            // ── Aturan Terusan ────────────────────────────────────────────────
+            case 0xbf7d6572: // messageActionNoForwardsToggle prev_value:Bool new_value:Bool
+                $r->readInt(); $r->readInt();
+                break;
+            case 0x3e2793ba: // messageActionNoForwardsRequest flags:# prev_value:Bool new_value:Bool
+                $r->readInt(); $r->readInt(); $r->readInt();
                 break;
 
             default:
-                // Unknown action constructor — stream is now corrupted past this point.
-                // Throw so caller can detect and stop parsing.
                 throw new \RuntimeException(sprintf('Unknown MessageAction constructor: 0x%08x', $c));
         }
     }
@@ -1880,12 +2095,249 @@ class TLSkipHelper
     // Page#98657f0d — Instant View page (very complex, used in webPage.cached_page)
     // flags:# url:string blocks:Vector<PageBlock> photos:Vector<Photo>
     //   documents:Vector<Document> views:f.3?int
-    // PageBlock has 30+ subtypes with RichText (recursive) — too complex to skip safely.
-    // We throw here; callers should guard with try/catch.
+    // PageBlock has 30+ subtypes dengan RichText (rekursif) — terlalu kompleks.
     // =========================================================================
     public static function skipPage(BinaryReader $r): void
     {
         $c = $r->readInt();
         throw new \RuntimeException(sprintf('skipPage: Instant View page (ctor=0x%08x) not supported', $c));
+    }
+
+    // =========================================================================
+    // PaymentCharge — paymentCharge#ea02c27e id:string provider_charge_id:string
+    // =========================================================================
+    private static function skipPaymentCharge(BinaryReader $r): void
+    {
+        $r->readInt();    // ctor
+        $r->readString(); // id
+        $r->readString(); // provider_charge_id
+    }
+
+    // =========================================================================
+    // PostAddress — postAddress#1e8caaeb (6 strings)
+    // =========================================================================
+    private static function skipPostAddress(BinaryReader $r): void
+    {
+        $r->readInt();    // ctor
+        $r->readString(); // street_line1
+        $r->readString(); // street_line2
+        $r->readString(); // city
+        $r->readString(); // state
+        $r->readString(); // country_iso2
+        $r->readString(); // post_code
+    }
+
+    // =========================================================================
+    // PaymentRequestedInfo — paymentRequestedInfo#909c3f94 flags:#
+    //   name:f.0?string phone:f.1?string email:f.2?string shipping_address:f.3?PostAddress
+    // =========================================================================
+    private static function skipPaymentRequestedInfo(BinaryReader $r): void
+    {
+        $r->readInt();    // ctor
+        $flags = $r->readInt();
+        if ($flags & (1 << 0)) $r->readString();
+        if ($flags & (1 << 1)) $r->readString();
+        if ($flags & (1 << 2)) $r->readString();
+        if ($flags & (1 << 3)) self::skipPostAddress($r);
+    }
+
+    // =========================================================================
+    // TextWithEntities — textWithEntities#751f3146 text:string entities:Vector<MessageEntity>
+    // =========================================================================
+    private static function skipTextWithEntities(BinaryReader $r): void
+    {
+        $r->readInt();    // ctor
+        $r->readString(); // text
+        self::skipVector($r, fn($x) => self::skipMessageEntity($x));
+    }
+
+    // =========================================================================
+    // StarsAmount — starsAmount#bbb6b4a3 amount:long nanos:int
+    // =========================================================================
+    private static function skipStarsAmount(BinaryReader $r): void
+    {
+        $r->readInt();  // ctor
+        $r->readLong(); // amount
+        $r->readInt();  // nanos
+    }
+
+    // =========================================================================
+    // ChatTheme — chatTheme#c3dffc04 emoticon:string
+    // =========================================================================
+    private static function skipChatTheme(BinaryReader $r): void
+    {
+        $r->readInt();    // ctor
+        $r->readString(); // emoticon
+    }
+
+    // =========================================================================
+    // TodoItem — todoItem#cba9a52f id:int title:TextWithEntities
+    // =========================================================================
+    private static function skipTodoItem(BinaryReader $r): void
+    {
+        $r->readInt(); // ctor
+        $r->readInt(); // id
+        self::skipTextWithEntities($r);
+    }
+
+    // =========================================================================
+    // BotApp — botApp#95fcd1d6 flags:# id:long access_hash:long short_name:string
+    //   title:string description:string photo:Photo document:f.0?Document hash:long
+    // =========================================================================
+    private static function skipBotApp(BinaryReader $r): void
+    {
+        $r->readInt();    // ctor
+        $flags = $r->readInt();
+        $r->readLong();   // id
+        $r->readLong();   // access_hash
+        $r->readString(); // short_name
+        $r->readString(); // title
+        $r->readString(); // description
+        self::skipPhoto($r);
+        if ($flags & (1 << 0)) self::skipDocument($r);
+        $r->readLong();   // hash
+    }
+
+    // =========================================================================
+    // RequestedPeer — 3 variant
+    // requestedPeerUser#d62ff46a   flags:# user_id:long first_name:f.0? last_name:f.0? username:f.1? photo:f.2?
+    // requestedPeerChat#7307544f   flags:# chat_id:long title:f.0? photo:f.2?
+    // requestedPeerChannel#8ba403e4 flags:# channel_id:long title:f.0? username:f.1? photo:f.2?
+    // =========================================================================
+    private static function skipRequestedPeer(BinaryReader $r): void
+    {
+        $c = $r->readInt();
+        switch ($c) {
+            case 0xd62ff46a: // requestedPeerUser
+                $flags = $r->readInt();
+                $r->readLong();
+                if ($flags & (1 << 0)) { $r->readString(); $r->readString(); } // first_name, last_name
+                if ($flags & (1 << 1)) $r->readString(); // username
+                if ($flags & (1 << 2)) self::skipPhoto($r);
+                break;
+            case 0x7307544f: // requestedPeerChat
+                $flags = $r->readInt();
+                $r->readLong();
+                if ($flags & (1 << 0)) $r->readString();
+                if ($flags & (1 << 2)) self::skipPhoto($r);
+                break;
+            case 0x8ba403e4: // requestedPeerChannel
+                $flags = $r->readInt();
+                $r->readLong();
+                if ($flags & (1 << 0)) $r->readString();
+                if ($flags & (1 << 1)) $r->readString();
+                if ($flags & (1 << 2)) self::skipPhoto($r);
+                break;
+            default:
+                throw new \RuntimeException(sprintf('Unknown RequestedPeer: 0x%08x', $c));
+        }
+    }
+
+    // =========================================================================
+    // StarGiftAttributeRarity — permille:int atau tanpa field
+    // =========================================================================
+    private static function skipStarGiftAttributeRarity(BinaryReader $r): void
+    {
+        $c = $r->readInt();
+        if ($c === 0x36437737) $r->readInt(); // starGiftAttributeRarity permille:int
+        // variant lain tidak punya field
+    }
+
+    // =========================================================================
+    // StarGiftAttribute — 4 variant
+    // =========================================================================
+    private static function skipStarGiftAttribute(BinaryReader $r): void
+    {
+        $c = $r->readInt();
+        switch ($c) {
+            case 0x565251e2: // starGiftAttributeModel flags:# name:string document:Document rarity
+                $r->readInt(); // flags (crafted bit)
+                $r->readString();
+                self::skipDocument($r);
+                self::skipStarGiftAttributeRarity($r);
+                break;
+            case 0x4e7085ea: // starGiftAttributePattern name:string document:Document rarity
+                $r->readString();
+                self::skipDocument($r);
+                self::skipStarGiftAttributeRarity($r);
+                break;
+            case 0x9f2504e4: // starGiftAttributeBackdrop name:string backdrop_id center_color edge_color pattern_color text_color rarity
+                $r->readString();
+                $r->readInt(); $r->readInt(); $r->readInt(); $r->readInt(); $r->readInt();
+                self::skipStarGiftAttributeRarity($r);
+                break;
+            case 0xe0bff26c: // starGiftAttributeOriginalDetails flags:# sender_id:f.0?Peer recipient_id:Peer date:int message:f.1?TextWithEntities
+                $flags = $r->readInt();
+                if ($flags & (1 << 0)) self::skipPeer($r);
+                self::skipPeer($r);
+                $r->readInt();
+                if ($flags & (1 << 1)) self::skipTextWithEntities($r);
+                break;
+            default:
+                throw new \RuntimeException(sprintf('Unknown StarGiftAttribute: 0x%08x', $c));
+        }
+    }
+
+    // =========================================================================
+    // StarGiftBackground — starGiftBackground#aff56398 center_color edge_color text_color
+    // =========================================================================
+    private static function skipStarGiftBackground(BinaryReader $r): void
+    {
+        $r->readInt(); // ctor
+        $r->readInt(); // center_color
+        $r->readInt(); // edge_color
+        $r->readInt(); // text_color
+    }
+
+    // =========================================================================
+    // StarGift — 2 variant
+    // starGift#313a9547       — hadiah biasa (id:long sticker:Document stars:long + banyak flag)
+    // starGiftUnique#85f0a9cd — hadiah unik (punya Vector<StarGiftAttribute>)
+    // =========================================================================
+    private static function skipStarGift(BinaryReader $r): void
+    {
+        $c = $r->readInt();
+        if ($c === 0x313a9547) {
+            // starGift biasa
+            $flags = $r->readInt();
+            $r->readLong();        // id
+            self::skipDocument($r); // sticker
+            $r->readLong();        // stars
+            if ($flags & (1 << 0)) { $r->readInt(); $r->readInt(); } // availability_remains, total
+            if ($flags & (1 << 4)) $r->readLong();  // availability_resale
+            $r->readLong();        // convert_stars
+            if ($flags & (1 << 1)) { $r->readInt(); $r->readInt(); } // first/last_sale_date
+            if ($flags & (1 << 3)) $r->readLong();  // upgrade_stars
+            if ($flags & (1 << 4)) $r->readLong();  // resell_min_stars
+            if ($flags & (1 << 5)) $r->readString(); // title
+            if ($flags & (1 << 6)) self::skipPeer($r); // released_by
+            if ($flags & (1 << 8)) { $r->readInt(); $r->readInt(); } // per_user_total, remains
+            if ($flags & (1 << 9)) $r->readInt();   // locked_until_date
+            if ($flags & (1 << 11)) { $r->readString(); $r->readInt(); $r->readInt(); } // auction_slug, gifts_per_round, start_date
+            if ($flags & (1 << 12)) $r->readInt();  // upgrade_variants
+            if ($flags & (1 << 13)) self::skipStarGiftBackground($r);
+        } elseif ($c === 0x85f0a9cd) {
+            // starGiftUnique
+            $flags = $r->readInt();
+            $r->readLong(); $r->readLong(); // id, gift_id
+            $r->readString(); $r->readString(); // title, slug
+            $r->readInt(); // num
+            if ($flags & (1 << 0)) self::skipPeer($r);   // owner_id
+            if ($flags & (1 << 1)) $r->readString();      // owner_name
+            if ($flags & (1 << 2)) $r->readString();      // owner_address
+            self::skipVector($r, fn($x) => self::skipStarGiftAttribute($x)); // attributes
+            $r->readInt(); $r->readInt(); // availability_issued, total
+            if ($flags & (1 << 3)) $r->readString(); // gift_address
+            if ($flags & (1 << 4)) self::skipVector($r, fn($x) => self::skipStarsAmount($x)); // resell_amount
+            if ($flags & (1 << 5)) self::skipPeer($r);    // released_by
+            if ($flags & (1 << 8)) { $r->readLong(); $r->readString(); $r->readLong(); } // value_amount, currency, usd_amount
+            if ($flags & (1 << 10)) self::skipPeer($r);   // theme_peer
+            if ($flags & (1 << 11)) self::skipPeerColor($r); // peer_color
+            if ($flags & (1 << 12)) self::skipPeer($r);   // host_id
+            if ($flags & (1 << 13)) $r->readInt();        // offer_min_stars
+            if ($flags & (1 << 16)) $r->readInt();        // craft_chance_permille
+        } else {
+            throw new \RuntimeException(sprintf('Unknown StarGift ctor: 0x%08x', $c));
+        }
     }
 }

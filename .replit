@@ -23,12 +23,12 @@ args = "Interactive Login"
 name = "Interactive Login"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "php interactive_login.php"
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "TG_API_ID=19001991 TG_API_HASH=f3eb78228439ad8ac3b81729df992a9a php xnoxs_tester.php"
 
 [userenv]
 

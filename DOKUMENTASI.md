@@ -931,7 +931,7 @@ $client->on(new NewMessage(incoming: true), function (NewMessageEvent $event) {
 });
 
 // Hanya pesan keluar (yang kita kirim)
-$client->on(new NewMessage(outgoing: true), function (NewMessageEvent $event) {
+$client->on(new NewMessage(incoming: false), function (NewMessageEvent $event) {
     echo "Pesan keluar: " . $event->rawText . "\n";
 });
 
@@ -2562,12 +2562,12 @@ $client->onUpdate(function (RawUpdateEvent $event) use ($client) {
             break;
 
         case 'delete_messages':
-            $ids = $event->messageIds; // int[]
+            $ids = $event->ids; // int[]
             echo "[DELETE] Pesan dihapus: " . implode(', ', $ids) . "\n";
             break;
 
         case 'read_history':
-            echo "[READ] Riwayat dibaca sampai ID {$event->maxId}\n";
+            echo "[READ] Riwayat dibaca sampai ID {$event->max_id}\n";
             break;
 
         case 'pinned_messages':
@@ -2575,7 +2575,7 @@ $client->onUpdate(function (RawUpdateEvent $event) use ($client) {
             break;
 
         case 'user_status':
-            $userId = $event->userId;
+            $userId = $event->user_id;
             $status = $event->online ? 'online' : 'offline';
             echo "[STATUS] User #$userId sekarang $status\n";
             break;
@@ -2594,23 +2594,23 @@ $event->type        // string — tipe update
 $event->message     // FullMessage
 
 // delete_messages, pinned_messages:
-$event->messageIds  // int[]
+$event->ids         // int[]
 
 // delete_messages:
-$event->channelId   // ?int
+$event->channel_id  // ?int
 
 // read_history:
 $event->direction   // 'in' | 'out'
-$event->maxId       // int
-$event->peerId      // mixed
+$event->max_id      // int
+$event->peer        // array — peer info
 
 // pinned_messages:
 $event->pinned      // bool
 
 // user_status:
-$event->userId      // int
+$event->user_id     // int
 $event->online      // bool
-$event->wasOnline   // int — unix timestamp terakhir online
+$event->was_online  // int — unix timestamp terakhir online
 ```
 
 **Semua nilai `$event->type`:**
@@ -2619,10 +2619,10 @@ $event->wasOnline   // int — unix timestamp terakhir online
 |------|-----------|----------------|
 | `new_message` | Pesan baru diterima | `$event->message` |
 | `edit_message` | Pesan yang ada diedit | `$event->message` |
-| `delete_messages` | Pesan dihapus | `$event->messageIds`, `$event->channelId` |
-| `read_history` | Riwayat dibaca oleh peer | `$event->direction`, `$event->maxId` |
-| `pinned_messages` | Perubahan pesan yang di-pin | `$event->messageIds`, `$event->pinned` |
-| `user_status` | Status online user berubah | `$event->userId`, `$event->online`, `$event->wasOnline` |
+| `delete_messages` | Pesan dihapus | `$event->ids`, `$event->channel_id` |
+| `read_history` | Riwayat dibaca oleh peer | `$event->direction`, `$event->max_id` |
+| `pinned_messages` | Perubahan pesan yang di-pin | `$event->ids`, `$event->pinned` |
+| `user_status` | Status online user berubah | `$event->user_id`, `$event->online`, `$event->was_online` |
 
 ### 29.3 Field FullMessage (untuk new_message & edit_message)
 

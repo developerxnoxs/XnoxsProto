@@ -1432,8 +1432,9 @@ while (true) {
 
 **Signature:**
 ```php
-pollOnce(int $timeoutSeconds = 1): void
+pollOnce(int $timeoutSeconds = 1): bool
 // $timeoutSeconds — berapa detik maksimum menunggu update dari server
+// Return: true jika ada update yang berhasil diproses, false jika timeout tanpa update
 ```
 
 ### 12.8 Stop Event Loop
@@ -3756,11 +3757,23 @@ $client->runUntilDisconnected();
 
 ## 30. Catatan Kompatibilitas Layer 214
 
-Versi 1.1.0 memperbarui parser TL untuk menyesuaikan perubahan konstruktor di **API Layer 214**. Jika kamu menggunakan library sebelum versi ini dan mengalami masalah "anggota tidak ditemukan" atau parsing error, pastikan sudah menggunakan versi terbaru.
+Library memperbarui parser TL untuk menyesuaikan perubahan konstruktor di **API Layer 214**. Jika mengalami parsing error atau update tidak terbaca, pastikan constructor ID di `UpdateParser.php` dan parser lainnya sesuai dengan tabel di bawah.
 
-### 30.1 Perubahan Konstruktor TL (Layer 148 → 214)
+### 30.1 Perubahan Konstruktor TL
 
-Tabel berikut mencantumkan constructor ID yang berubah antara layer lama dan Layer 214 yang kini digunakan library:
+Tabel berikut mencantumkan constructor ID yang berubah dari layer lama ke layer yang kini digunakan server Telegram:
+
+**Update / Event Push (UpdateParser.php):**
+
+| Konstruktor | ID Lama | ID Benar (saat ini) | Catatan |
+|-------------|---------|----------------------|---------|
+| `updateShortMessage` | `0x78d4dec1` | `0x313bc7f8` | Pesan DM masuk/keluar |
+| `updateShortChatMessage` | `0x9e0d9b1f` | `0x4d6deea5` | Pesan grup biasa masuk/keluar |
+| `updateShort` | `0x11f1331c` | `0x78d4dec1` | Wrapper satu Update + date |
+
+> **Catatan penting:** `0x78d4dec1` dulu adalah ID `updateShortMessage`, sekarang merupakan ID `updateShort` (struktur berbeda: berisi satu inner `Update` + `date:int`). Menukar keduanya menyebabkan `"Not enough data to read"` karena parser mencoba baca field yang tidak ada.
+
+**Member & Chat Parser:**
 
 | Konstruktor | ID Lama | ID Baru (Layer 214) | Perubahan Utama |
 |-------------|---------|---------------------|-----------------|
@@ -3777,16 +3790,21 @@ Tabel berikut mencantumkan constructor ID yang berubah antara layer lama dan Lay
 
 ### 30.2 Dampak & Gejala
 
-Jika constructor ID tidak sesuai layer yang digunakan server, library akan gagal mem-parse respons dan `getChannelMembers()` mengembalikan array kosong meski anggota sebenarnya ada. Semua constructor di atas sudah diperbarui di versi 1.1.0.
+| Gejala | Kemungkinan Penyebab |
+|--------|----------------------|
+| `"Not enough data to read"` saat listen update | Constructor `updateShortMessage` / `updateShort` tertukar |
+| Update diterima tapi tidak masuk handler | Constructor baru diabaikan sebagai `ctor_unknown` |
+| `getChannelMembers()` kosong padahal ada anggota | Constructor `channelParticipant*` tidak sesuai layer |
 
-### 30.3 Perubahan `interactive_login.php` v4.0
+Cara verifikasi constructor terkini: bandingkan dengan skema [pyrogram](https://github.com/pyrogram/pyrogram/blob/master/compiler/api/source/main_api.tl) atau [tdesktop](https://github.com/telegramdesktop/tdesktop/blob/dev/Telegram/SourceFiles/mtproto/scheme/api.tl).
 
-| Fitur | Sebelumnya (v3.x) | Sekarang (v4.0) |
-|-------|-------------------|-----------------|
-| Menu `[12]` | Hanya channel/supergroup | + Otomatis deteksi grup biasa |
-| Ikon role anggota | Tidak ada | 👑 creator · 🛡️ admin · 👤 member |
-| Limit anggota di picker | 100 | 200 |
-| Label menu | "Daftar anggota channel" | "Daftar anggota (channel / supergroup / grup biasa)" |
+### 30.3 Perubahan `xnoxs_tester.php`
+
+| Fitur | Keterangan |
+|-------|-----------|
+| Menu `[7]` → `[3]` Listen raw | Update listener sekarang berfungsi penuh setelah fix constructor |
+| Ikon role anggota | 👑 creator · 🛡️ admin · 👤 member |
+| Picker peer | Otomatis deteksi grup biasa, supergroup, dan channel |
 
 ---
 

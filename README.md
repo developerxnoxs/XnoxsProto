@@ -300,6 +300,7 @@ src/
 │   ├── Types/                 # Kelas tipe TL (User, Chat, Message …)
 │   ├── Functions/             # Kelas metode TL (SendMessage, GetHistory …)
 │   └── Parser/
+│       ├── UpdateParser.php   # Parse semua tipe update server-push (constructor ID terkini)
 │       └── TLSkipHelper.php   # Baca/lewati objek TL sembarang berdasarkan constructor
 │
 ├── Sessions/

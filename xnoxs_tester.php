@@ -861,8 +861,9 @@ function menu_grup(TelegramClient $c): void
         echo "  [14] Slow mode\n";
         echo "  [15] Edit judul\n";
         echo "  [16] Edit deskripsi\n";
-        echo "  [17] Lihat anggota channel\n";
+        echo "  [17] Lihat anggota channel/supergroup\n";
         echo "  [18] Hapus grup/channel\n";
+        echo "  [19] Lihat anggota grup biasa\n";
         echo "  [0]  Kembali\n\n";
 
         switch (inp("Pilih: ")) {
@@ -1068,6 +1069,35 @@ function menu_grup(TelegramClient $c): void
                     if ($res) ok("Dihapus permanen.");
                 } else {
                     info("Dibatalkan.");
+                }
+                jeda();
+                break;
+
+            case '19': // ── Lihat anggota grup biasa
+                subjudul("Anggota Grup Biasa");
+                $grup = pilihGrup($c, "Pilih grup biasa");
+                if (!$grup) break;
+                echo "  Mengambil daftar anggota...\n";
+                $members = coba(fn() => $c->getChatMembers($grup['id']));
+                if ($members) {
+                    $icons = ['creator' => '👑', 'admin' => '🛡️', 'member' => '👤'];
+                    foreach ($members as $m) {
+                        $icon = $icons[$m['role']] ?? '👤';
+                        printf("  %s  %-30s  %-15s  %s\n",
+                            $icon,
+                            substr($m['display'], 0, 30),
+                            !empty($m['username']) ? "@{$m['username']}" : "ID:{$m['user_id']}",
+                            '[' . $m['role'] . ']'
+                        );
+                    }
+                    echo "\n";
+                    $roles = array_count_values(array_column($members, 'role'));
+                    info(sprintf("Total: %d anggota  |  👑 %d creator  |  🛡️ %d admin  |  👤 %d member",
+                        count($members),
+                        $roles['creator'] ?? 0,
+                        $roles['admin']   ?? 0,
+                        $roles['member']  ?? 0
+                    ));
                 }
                 jeda();
                 break;

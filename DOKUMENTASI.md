@@ -28,7 +28,7 @@
 19. [Cari Pesan (Search)](#19-cari-pesan-search)
 20. [Info Lengkap User / Chat / Channel](#20-info-lengkap-user--chat--channel)
 21. [Daftar Channel Admin (getAdminChannels)](#21-daftar-channel-admin-getadminchannels)
-22. [Daftar Anggota Channel / Grup (getChannelMembers)](#22-daftar-anggota-channel--grup-getchannelmembers)
+22. [Daftar Anggota Channel / Grup (getChannelMembers / getChatMembers)](#22-daftar-anggota-channel--grup-getchannelmembers--getchatmembers)
 23. [Manajemen Akun (Account Module)](#23-manajemen-akun-account-module)
 24. [Download Media (FileDownloader)](#24-download-media-filedownloader) — DC migration, FILE_REFERENCE_EXPIRED auto-refresh, progress % nyata
 25. [Edit & Hapus Pesan](#25-edit--hapus-pesan)
@@ -39,6 +39,7 @@
 30. [Catatan Kompatibilitas Layer 214](#30-catatan-kompatibilitas-layer-214)
 31. [Pengaturan Privasi (Account Privacy)](#31-pengaturan-privasi-account-privacy)
 32. [Manajemen Grup, Supergroup & Channel](#32-manajemen-grup-supergroup--channel) — createChannel, deleteChat, editChatTitle, toggleSignatures, toggleSlowMode, setDefaultPermissions, toggleJoinToSend, toggleJoinRequest, exportInviteLink
+33. [Script Uji Interaktif (xnoxs_tester.php)](#33-script-uji-interaktif-xnoxs_testerphp) — menu CLI lengkap, pilih peer dari daftar, semua fitur library
 
 ---
 
@@ -1093,18 +1094,48 @@ echo "Total dialog: " . count($dialogs) . "\n";
 
 ### 10.3 Filter berdasarkan Tipe
 
+> **Penting — Tiga tipe saja:**
+> Library hanya mengembalikan tiga nilai `type`: `'user'`, `'chat'`, `'channel'`.
+> Supergroup dan broadcast channel **keduanya bertipe `'channel'`** — dibedakan via flag `is_supergroup` dan `is_channel`.
+> Bot juga bertipe `'user'`, dibedakan via flag `bot`.
+
 ```php
 $dialogs = $client->getDialogs(limit: 100);
 
-$users    = array_filter($dialogs, fn($d) => $d['type'] === 'user');
-$chats    = array_filter($dialogs, fn($d) => $d['type'] === 'chat');
-$channels = array_filter($dialogs, fn($d) => $d['type'] === 'channel' && $d['is_channel']);
-$groups   = array_filter($dialogs, fn($d) => $d['type'] === 'channel' && $d['is_supergroup']);
+// DM dengan manusia biasa
+$users = array_filter($dialogs, fn($d) => $d['type'] === 'user' && !$d['bot']);
 
-echo "DM      : " . count($users) . "\n";
-echo "Grup    : " . count($chats) + count($groups) . "\n";
-echo "Channel : " . count($channels) . "\n";
+// Bot (DM dengan bot)
+$bots = array_filter($dialogs, fn($d) => $d['type'] === 'user' && $d['bot']);
+
+// Grup biasa (basic group, maks 200 anggota)
+$chats = array_filter($dialogs, fn($d) => $d['type'] === 'chat');
+
+// Supergroup (grup besar, ex-grup yang sudah upgrade)
+$supergroups = array_filter($dialogs, fn($d) => $d['type'] === 'channel' && $d['is_supergroup']);
+
+// Channel broadcast (hanya admin yang bisa posting)
+$channels = array_filter($dialogs, fn($d) => $d['type'] === 'channel' && $d['is_channel']);
+
+// Channel ATAU supergroup (semua type='channel')
+$allChannels = array_filter($dialogs, fn($d) => $d['type'] === 'channel');
+
+echo "DM Manusia   : " . count($users) . "\n";
+echo "Bot          : " . count($bots) . "\n";
+echo "Grup Biasa   : " . count($chats) . "\n";
+echo "Supergroup   : " . count($supergroups) . "\n";
+echo "Channel      : " . count($channels) . "\n";
 ```
+
+**Ringkasan tipe:**
+
+| `type` | `bot` | `is_supergroup` | `is_channel` | Artinya |
+|--------|-------|-----------------|--------------|---------|
+| `user` | false | — | — | DM dengan pengguna biasa |
+| `user` | true  | — | — | DM dengan bot |
+| `chat` | — | false | false | Grup biasa (≤200 anggota) |
+| `channel` | — | true | false | Supergroup (grup besar) |
+| `channel` | — | false | true | Channel broadcast |
 
 ### 10.4 Filter Dialog yang Belum Dibaca
 
@@ -2805,6 +2836,57 @@ Return value sama untuk semua tipe peer — array dari:
 | `'member'` | Anggota biasa |
 | `'banned'` | Pengguna yang di-ban (hanya muncul dengan `filter='banned'`) |
 | `'left'` | Pengguna yang sudah keluar (jarang dikembalikan) |
+
+### 22.8 getChatMembers() — Dedicated Method untuk Grup Biasa
+
+Method khusus untuk grup biasa yang lebih eksplisit dari `getChannelMembers()`. Melempar `InvalidArgumentException` jika peer yang diberikan bukan grup biasa, sehingga cocok untuk kode yang hanya ingin menangani basic group.
+
+```php
+// Ambil semua anggota grup biasa
+$members = $client->getChatMembers(123456789);   // ID numerik
+$members = $client->getChatMembers('@grupku');   // username (jika ada)
+
+foreach ($members as $m) {
+    $icon = match($m['role']) {
+        'creator' => '👑',
+        'admin'   => '🛡️',
+        default   => '👤',
+    };
+    printf("%s  %-25s  [%s]\n", $icon, $m['display'], $m['role']);
+}
+```
+
+**Contoh output:**
+```
+👑  Budi Santoso            [creator]
+🛡️  Ani Rahayu             [admin]
+👤  Citra Dewi              [member]
+👤  Doni Prakasa            [member]
+
+Total: 4 anggota  |  👑 1 creator  |  🛡️ 1 admin  |  👤 2 member
+```
+
+**Signature:**
+```php
+getChatMembers(
+    int|string|InputPeer $chat   // ID numerik, username, atau InputPeer grup biasa
+): array
+// Throws \InvalidArgumentException jika peer bukan type='chat'
+```
+
+**Perbedaan dengan `getChannelMembers()`:**
+
+| | `getChatMembers()` | `getChannelMembers()` |
+|--|--------------------|-----------------------|
+| Tipe peer | Hanya `chat` (basic group) | `chat`, `channel`, supergroup |
+| Filter | Tidak ada — selalu semua anggota | `recent`, `admins`, `bots`, `banned` |
+| Pagination | Tidak ada — satu request saja | Ada (`offset` + `limit`) |
+| Peer salah | Lempar `InvalidArgumentException` | Auto-switch ke API yang tepat |
+| Return format | Sama | Sama |
+
+> **Kapan pakai `getChatMembers()`?** Ketika kode kamu secara eksplisit hanya menangani grup biasa dan ingin pesan error yang jelas jika peer ternyata channel/supergroup.
+>
+> **Kapan pakai `getChannelMembers()`?** Ketika kamu tidak tahu tipe peer sebelumnya dan ingin satu method yang bekerja untuk semua jenis grup.
 
 ---
 
@@ -4542,3 +4624,161 @@ $client->deleteChat($chatId);
 echo "Selesai.\n";
 $client->disconnect();
 ```
+
+---
+
+## 33. Script Uji Interaktif (xnoxs_tester.php)
+
+`xnoxs_tester.php` adalah script CLI interaktif yang mencakup **seluruh fitur library** dalam satu file. Dirancang untuk pengujian cepat tanpa perlu menulis kode — semua operasi dijalankan lewat menu bernomor, dan saat fitur memerlukan peer (kontak, grup, channel) hasilnya **ditarik otomatis dari API** sehingga tidak perlu mengetik ID atau username secara manual.
+
+### 33.1 Cara Menjalankan
+
+```bash
+TG_API_ID=xxxxx TG_API_HASH=yyyyyyy php xnoxs_tester.php
+```
+
+Script otomatis mendeteksi file session pertama di folder `sessions/`. Pastikan sudah login sebelumnya.
+
+### 33.2 Struktur Menu
+
+```
+════════════════════════════════════════════════════
+  MENU UTAMA — XNOXSPROTO TESTER
+════════════════════════════════════════════════════
+  [1]  Manajemen Akun
+  [2]  Pesan & Chat
+  [3]  Media
+  [4]  Kontak & Dialog
+  [5]  Grup & Channel
+  [6]  Bot & Interaksi
+  [7]  Update & Event
+  [0]  Keluar
+════════════════════════════════════════════════════
+```
+
+### 33.3 Fitur per Submenu
+
+#### Menu 1 — Manajemen Akun
+| Opsi | Method yang diuji |
+|------|------------------|
+| Info akun saya | `getMe()` |
+| Edit nama depan / belakang / bio | `getAccount()->updateProfile()` |
+| Edit username | `getAccount()->updateUsername()` |
+| Upload foto profil | `getAccount()->uploadProfilePhoto()` |
+| Lihat sesi aktif | `getAccount()->getAuthorizations()` |
+| Hapus sesi tertentu | `getAccount()->resetAuthorization()` — pilih dari daftar sesi |
+| Keluar semua sesi lain | `getAccount()->terminateAllOtherSessions()` |
+| Lihat pengaturan privasi | `getAccount()->getPrivacy()` — pilih key dari daftar |
+| Ubah pengaturan privasi | `getAccount()->setPrivacy()` |
+
+#### Menu 2 — Pesan & Chat
+| Opsi | Method yang diuji |
+|------|------------------|
+| Kirim pesan teks | `sendMessage()` |
+| Lihat riwayat chat | `getHistory()` |
+| Edit pesan | `editMessage()` |
+| Hapus pesan | `deleteMessages()` |
+| Forward pesan | `forwardMessages()` |
+| Cari pesan dalam chat | `search()` |
+| Cari pesan global | `searchGlobal()` |
+| Pin / Unpin pesan | `pinMessage()` / `unpinMessage()` |
+| Kirim polling / kuis | `sendPoll()` |
+
+#### Menu 3 — Media
+| Opsi | Method yang diuji |
+|------|------------------|
+| Kirim foto | `sendPhoto()` |
+| Kirim video | `sendVideo()` |
+| Kirim audio / MP3 | `sendAudio()` |
+| Kirim dokumen | `sendDocument()` |
+| Kirim pesan suara | `sendVoice()` |
+| Download media dari riwayat | `downloadMedia()` dengan progress bar |
+
+#### Menu 4 — Kontak & Dialog
+| Opsi | Method yang diuji |
+|------|------------------|
+| Lihat semua dialog (dikelompok tipe) | `getDialogs()` |
+| Lihat daftar kontak | `getContacts()` |
+| Info lengkap pengguna | `getFullUser()` |
+| Info lengkap grup/channel | `getFullChat()` / `getFullChannel()` |
+
+#### Menu 5 — Grup & Channel
+| Opsi | Method yang diuji |
+|------|------------------|
+| Buat grup biasa | `createChat()` |
+| Buat supergroup | `createChannel(..., megagroup: true)` |
+| Buat channel broadcast | `createChannel(..., megagroup: false)` |
+| Gabung channel | `joinChannel()` |
+| Keluar channel/supergroup | `leaveChannel()` |
+| Undang anggota ke channel | `inviteToChannel()` |
+| Tambah anggota ke grup biasa | `addChatUser()` |
+| Promosi admin | `promoteAdmin()` |
+| Turunkan admin | `demoteAdmin()` |
+| Ban / Unban / Kick anggota | `banUser()` / `unbanUser()` / `kickUser()` |
+| Export link undangan | `exportInviteLink()` |
+| Slow mode | `toggleSlowMode()` |
+| Edit judul | `editChatTitle()` |
+| Edit deskripsi | `editChatAbout()` |
+| Lihat anggota | `getChannelMembers()` |
+| Hapus grup/channel | `deleteChat()` |
+
+#### Menu 6 — Bot & Interaksi
+| Opsi | Method yang diuji |
+|------|------------------|
+| Mulai bot dengan `/start` param | `startBot()` |
+| Klik tombol inline dari pesan | `clickButton()` |
+
+#### Menu 7 — Update & Event
+| Opsi | Method yang diuji |
+|------|------------------|
+| Poll sekali | `pollOnce()` |
+| Listen pesan masuk (filter kata kunci) | `on(new NewMessage(...))` + `runUntilDisconnected()` |
+| Listen semua update mentah | `onUpdate()` + `runUntilDisconnected()` |
+
+### 33.4 Mekanisme Pilih Peer Otomatis
+
+Semua operasi yang memerlukan peer tidak meminta input manual. Script menggunakan tiga fungsi helper:
+
+```
+Pilih tujuan dari:
+  [1] Dialog (riwayat chat)
+  [2] Kontak
+  [0] Batal
+```
+
+Jika memilih **Dialog**, daftar ditarik dari `getDialogs(80)`.  
+Jika memilih **Kontak**, daftar ditarik dari `getContacts()`.
+
+Untuk operasi yang hanya relevan untuk satu jenis peer, filternya otomatis:
+
+| Helper | Filter | Digunakan untuk |
+|--------|--------|-----------------|
+| `pilihGrup()` | `type = 'chat'` saja | Tambah anggota ke grup biasa |
+| `pilihChannel()` | `type = 'channel'` saja | Undang ke channel, slow mode, lihat anggota |
+| `pilihGrupAtauChannel()` | `type = 'chat'` atau `'channel'` | Promosi, ban, kick, edit judul, hapus |
+| `pilihTujuan()` | Dialog atau Kontak (pilihan user) | Semua operasi kirim |
+
+### 33.5 Label Subtype di Daftar
+
+Saat memilih dari daftar, label menampilkan subtype secara eksplisit:
+
+```
+  [1] [Grup Biasa  ] Nama Grup (5 anggota)
+  [2] [Supergroup  ] Nama Supergroup Besar
+  [3] [Channel     ] @nama_channel
+  [4] [Bot         ] @mybot
+```
+
+Ini mencegah kebingungan antara grup biasa, supergroup, dan channel broadcast karena ketiganya berbeda cara kerja API-nya.
+
+### 33.6 File Aset Uji
+
+Script menggunakan file di folder `test_assets/` sebagai nilai default:
+
+| File | Digunakan untuk |
+|------|----------------|
+| `test_assets/test_photo.jpg` | Uji kirim foto & upload foto profil |
+| `test_assets/test_audio.mp3` | Uji kirim audio |
+| `test_assets/test_doc.txt` | Uji kirim dokumen |
+
+Bisa diganti dengan path file lain saat diminta — tekan Enter untuk pakai default.

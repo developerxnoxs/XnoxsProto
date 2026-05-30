@@ -2694,6 +2694,48 @@ class TelegramClient
         return $this->parseChannelParticipants($response['reader']);
     }
 
+    // =========================================================================
+    // getChatMembers() — daftar anggota grup biasa (basic group)
+    // =========================================================================
+
+    /**
+     * Ambil daftar seluruh anggota grup biasa (basic group / type='chat').
+     *
+     * Berbeda dengan getChannelMembers() yang juga mendukung supergroup/channel,
+     * method ini khusus untuk grup biasa dan selalu mengembalikan SEMUA anggota
+     * dalam satu request (tidak ada pagination karena Telegram membatasi
+     * basic group maks 200 anggota).
+     *
+     * @param int|string|InputPeer $chat  ID numerik, username, atau InputPeer grup biasa
+     * @return array  Array of:
+     *   [ 'user_id', 'username', 'first_name', 'last_name', 'display',
+     *     'phone', 'bot', 'role' => 'creator'|'admin'|'member',
+     *     'rank', 'date', 'access_hash' ]
+     *
+     * @throws \RuntimeException jika RPC gagal atau peer bukan grup biasa
+     */
+    public function getChatMembers(int|string|InputPeer $chat): array
+    {
+        $this->assertReady();
+
+        $inputPeer = $chat instanceof InputPeer ? $chat : $this->resolvePeer($chat);
+
+        // Pastikan peer adalah basic group (chat), bukan channel/supergroup
+        $info   = $this->peerCache['id:' . $inputPeer->getId()]
+               ?? $this->session->getEntityRowsById($inputPeer->getId());
+        $isChat = ($info['type'] ?? null) === 'chat'
+               || $inputPeer->getType() === InputPeer::CHAT;
+
+        if (!$isChat) {
+            throw new \InvalidArgumentException(
+                'getChatMembers() hanya untuk grup biasa (type=chat). ' .
+                'Untuk supergroup/channel gunakan getChannelMembers().'
+            );
+        }
+
+        return $this->fetchChatMembersViaFullChat($inputPeer->getId());
+    }
+
     /**
      * Ambil anggota regular group via messages.getFullChat.
      */

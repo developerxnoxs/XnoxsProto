@@ -1549,22 +1549,34 @@ function chat_realtime(TelegramClient $c): void
     $inputBuffer = '';
 
     $c->on(new NewMessage(), function ($event) use (
-        $inputPeer, &$lastMsgId, &$lastMsgFrom, &$inputBuffer
+        $c, $inputPeer, &$lastMsgId, &$lastMsgFrom, &$inputBuffer
     ) {
-        $msg  = $event->message;
-        $from = $msg['from_name'] ?? ('ID:' . ($msg['from_id'] ?? '?'));
-        $teks = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
-        $time = date('H:i:s');
-        $replyInfo = '';
-        if (!empty($msg['reply_to_msg_id'])) {
-            $replyInfo = " (↩ #" . $msg['reply_to_msg_id'] . ")";
+        /** @var \XnoxsProto\TL\Types\FullMessage $msg */
+        $msg = $event->message;
+
+        // Tentukan nama pengirim — $msg adalah objek FullMessage, bukan array
+        $from = 'Saya';
+        if (!$msg->out) {
+            $senderId = $msg->fromUserId ?? $msg->peerId;
+            // 1. Coba dari users yang ikut dalam update (untuk group/channel)
+            if ($msg->fromUserId !== null && isset($event->users[$msg->fromUserId])) {
+                $u    = $event->users[$msg->fromUserId];
+                $from = trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? ''));
+                if ($from === '') $from = $u->username ?? ('ID:' . $msg->fromUserId);
+            // 2. Fallback: lookup dari peerCache (untuk DM via updateShortMessage)
+            } elseif ($senderId !== null) {
+                $from = $c->getPeerName($senderId) ?? ('ID:' . $senderId);
+            }
         }
+
+        $teks = ($msg->text !== '') ? $msg->text : ('[' . ($msg->media['type'] ?? 'media') . ']');
+        $time = date('H:i:s');
 
         // Hapus baris prompt yang sedang aktif, cetak pesan, tulis ulang prompt
         echo "\r\033[K";
-        printf("  [%s] %-20s %s%s\n", $time, $from . ':', substr($teks, 0, 80), $replyInfo);
+        printf("  [%s] %-20s %s\n", $time, $from . ':', substr($teks, 0, 80));
 
-        $lastMsgId   = $msg['id'] ?? null;
+        $lastMsgId   = $msg->id;
         $lastMsgFrom = $from;
 
         // Tulis ulang prompt + isi buffer yang sedang diketik

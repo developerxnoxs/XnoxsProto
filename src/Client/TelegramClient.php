@@ -1495,6 +1495,15 @@ class TelegramClient
         };
     }
 
+    /**
+     * Cari nama tampilan peer dari cache lokal (tanpa network call).
+     * Berguna untuk menampilkan nama pengirim di event handler.
+     */
+    public function getPeerName(int $id): ?string
+    {
+        return $this->peerCache['id:' . $id]['title'] ?? null;
+    }
+
     private function peerCacheGet(string $peer): ?array
     {
         $key = ltrim($peer, '@');
@@ -1594,7 +1603,7 @@ class TelegramClient
                         $event = new NewMessageEvent($update);
                         try {
                             ($handler['callable'])($event);
-                        } catch (\Exception $e) {
+                        } catch (\Throwable $e) {
                             // Handler exception — continue to next handler
                         }
                     }

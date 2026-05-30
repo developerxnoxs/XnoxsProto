@@ -2067,15 +2067,37 @@ $account->updateUsername(''); // hapus username
 ### 23.3 Upload Foto Profil
 
 ```php
+$account = $client->getAccount();
+
+// Upload sederhana
 $result = $account->uploadProfilePhoto('/path/foto.jpg');
 echo "Foto ID: {$result['photo_id']}\n";
 
-// Dengan progress upload
-$result = $account->uploadProfilePhoto('/path/foto-hd.jpg',
-    onProgress: fn($p, $t, $pct) => print("Upload: $pct%\r")
+// Dengan progress callback (parameter ke-2, opsional)
+$result = $account->uploadProfilePhoto(
+    '/path/foto-hd.jpg',
+    function (int $part, int $total, int $pct) {
+        echo "\rUpload: $pct% ($part/$total chunk)";
+        flush();
+    }
 );
-// Returns: ['photo_id' => int, 'date' => int]
+echo "\n";
 ```
+
+**Return value:**
+```php
+[
+    'photo_id' => 6113664965953655333,  // int — ID foto yang baru diset
+    'date'     => 1780149586,           // int — Unix timestamp saat upload
+]
+```
+
+**Catatan:**
+- Format file yang didukung: JPG, PNG (rekomendasikan JPEG ≥ 640×640 px)
+- File < 10 MB → `inputFile`, file ≥ 10 MB → `inputFileBig` (otomatis)
+- Upload dilakukan chunked 512 KB per bagian
+- Foto yang diupload langsung menjadi foto profil aktif
+- Diuji nyata: foto 4.5 KB (1 chunk) berhasil dalam ~0.36 detik
 
 ### 23.4 Lihat Semua Sesi Aktif
 

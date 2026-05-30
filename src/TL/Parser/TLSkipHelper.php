@@ -641,6 +641,59 @@ class TLSkipHelper
         }
     }
 
+    // =========================================================================
+    // SendMessageAction — baca konstruktor + field opsional, kembalikan label
+    //
+    // sendMessageTypingAction        #16bf744e — (tidak ada field ekstra)
+    // sendMessageCancelAction        #fd5ec8f5 — (tidak ada field ekstra)
+    // sendMessageRecordVideoAction   #a187d66f — (tidak ada field ekstra)
+    // sendMessageUploadVideoAction   #e9763aec — progress:int
+    // sendMessageRecordAudioAction   #d52f73f7 — (tidak ada field ekstra)
+    // sendMessageUploadAudioAction   #f351d7ab — progress:int
+    // sendMessageUploadPhotoAction   #d1d34a26 — progress:int
+    // sendMessageUploadDocumentAction#aa0cd9e4 — progress:int
+    // sendMessageGeoLocationAction   #176f8ba1 — (tidak ada field ekstra)
+    // sendMessageChooseContactAction #628cbc6f — (tidak ada field ekstra)
+    // sendMessageGamePlayAction      #dd6a8f48 — (tidak ada field ekstra)
+    // sendMessageRecordRoundAction   #88f27fbc — (tidak ada field ekstra)
+    // sendMessageUploadRoundAction   #243e1c66 — progress:int
+    // speakingInGroupCallAction      #d92c2285 — (tidak ada field ekstra)
+    // sendMessageHistoryImportAction #dbda9246 — progress:int
+    // sendMessageChooseStickerAction #b05ac6b1 — (tidak ada field ekstra)
+    // sendMessageEmojiInteraction    #25972bcb — emoticon:string msg_id:int interaction:(complex)
+    // sendMessageEmojiInteractionSeen#b665902e — emoticon:string
+    //
+    // Mengembalikan '' bila aksi adalah cancel, label Bahasa Indonesia untuk lainnya.
+    // =========================================================================
+    public static function readSendMessageAction(BinaryReader $r): string
+    {
+        $ctor = $r->readInt();
+        switch ($ctor) {
+            case 0x16bf744e: return 'sedang mengetik';
+            case 0xfd5ec8f5: return '';                          // cancel
+            case 0xa187d66f: return 'merekam video';
+            case 0xe9763aec: $r->readInt(); return 'mengunggah video';
+            case 0xd52f73f7: return 'merekam suara';
+            case 0xf351d7ab: $r->readInt(); return 'mengunggah audio';
+            case 0xd1d34a26: $r->readInt(); return 'mengunggah foto';
+            case 0xaa0cd9e4: $r->readInt(); return 'mengunggah dokumen';
+            case 0x176f8ba1: return 'berbagi lokasi';
+            case 0x628cbc6f: return 'memilih kontak';
+            case 0xdd6a8f48: return 'bermain game';
+            case 0x88f27fbc: return 'merekam video bundar';
+            case 0x243e1c66: $r->readInt(); return 'mengunggah video bundar';
+            case 0xd92c2285: return 'berbicara di panggilan';
+            case 0xdbda9246: $r->readInt(); return 'mengimpor riwayat';
+            case 0xb05ac6b1: return 'memilih stiker';
+            case 0x25972bcb:                       // emojiInteraction: emoticon + msg_id
+                $r->readString(); $r->readInt();   // skip emoticon:string, msg_id:int
+                return 'reaksi emoji';             // interaction (MessageInteraction) diabaikan
+            case 0xb665902e:                       // emojiInteractionSeen: emoticon
+                $r->readString(); return 'melihat reaksi emoji';
+            default: return 'aktivitas';
+        }
+    }
+
     // Helper internal: skip Peer tanpa return value
     public static function skipPeer(BinaryReader $r): void
     {

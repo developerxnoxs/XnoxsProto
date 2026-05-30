@@ -47,8 +47,9 @@ class UpdateParser
     const UPDATE_PINNED_MESSAGES         = 0xe9b35d34;
     const UPDATE_PINNED_CHANNEL_MESSAGES = 0x5bb98608;
     const UPDATE_USER_STATUS             = 0x1bfbd823;
-    const UPDATE_USER_TYPING             = 0x5c486927;
-    const UPDATE_CHAT_USER_TYPING        = 0x9a65ea7f;
+    const UPDATE_USER_TYPING             = 0xc01e857f;
+    const UPDATE_CHAT_USER_TYPING        = 0x83487af0;
+    const UPDATE_CHANNEL_USER_TYPING     = 0x40771900;
     const UPDATE_CHANNEL                 = 0x635d6a41;
     const UPDATE_CHANNEL_TOO_LONG        = 0x108d941f;
     const UPDATE_CHANNEL_READ_MESSENGER  = 0x4214f37f;
@@ -303,18 +304,52 @@ class UpdateParser
                     ];
                 } catch (\Exception $e) { break; }
 
-            // --- Typing indicators (skip) ---
+            // --- Typing indicators ---
             } elseif ($ctor === self::UPDATE_USER_TYPING) {
+                // updateUserTyping#c01e857f user_id:long action:SendMessageAction
                 try {
-                    $r->readLong(); // user_id
-                    $r->readInt();  // action ctor
+                    $userId = $r->readLong();
+                    $action = TLSkipHelper::readSendMessageAction($r);
+                    $results[] = [
+                        'type'       => 'typing',
+                        'user_id'    => $userId,
+                        'chat_id'    => null,
+                        'channel_id' => null,
+                        'action'     => $action,
+                    ];
                 } catch (\Exception $e) { break; }
 
             } elseif ($ctor === self::UPDATE_CHAT_USER_TYPING) {
+                // updateChatUserTyping#83487af0 chat_id:long from_id:Peer action:SendMessageAction
                 try {
-                    $r->readLong(); // chat_id or channel_id
-                    $r->readLong(); // user_id
-                    $r->readInt();  // action ctor
+                    $chatId   = $r->readLong();
+                    $fromPeer = TLSkipHelper::readPeer($r);
+                    $action   = TLSkipHelper::readSendMessageAction($r);
+                    $results[] = [
+                        'type'       => 'typing',
+                        'user_id'    => $fromPeer['id'],
+                        'chat_id'    => $chatId,
+                        'channel_id' => null,
+                        'action'     => $action,
+                    ];
+                } catch (\Exception $e) { break; }
+
+            } elseif ($ctor === self::UPDATE_CHANNEL_USER_TYPING) {
+                // updateChannelUserTyping#40771900 flags:# channel_id:long top_msg_id:flags.0?int
+                //                                 from_id:Peer action:SendMessageAction
+                try {
+                    $flags     = $r->readInt();
+                    $channelId = $r->readLong();
+                    if ($flags & (1 << 0)) $r->readInt(); // top_msg_id (forum thread)
+                    $fromPeer  = TLSkipHelper::readPeer($r);
+                    $action    = TLSkipHelper::readSendMessageAction($r);
+                    $results[] = [
+                        'type'       => 'typing',
+                        'user_id'    => $fromPeer['id'],
+                        'chat_id'    => null,
+                        'channel_id' => $channelId,
+                        'action'     => $action,
+                    ];
                 } catch (\Exception $e) { break; }
 
             // --- Single-field channel updates (skip) ---
@@ -415,6 +450,59 @@ class UpdateParser
                     'user_id'    => $userId,
                     'online'     => $online,
                     'was_online' => $wasOnline,
+                    'users'      => [],
+                    'chats'      => [],
+                ];
+            } catch (\Exception $e) {}
+
+        } elseif ($ctor === self::UPDATE_USER_TYPING) {
+            // updateUserTyping#c01e857f user_id:long action:SendMessageAction
+            try {
+                $userId = $r->readLong();
+                $action = TLSkipHelper::readSendMessageAction($r);
+                $result = [
+                    'type'       => 'typing',
+                    'user_id'    => $userId,
+                    'chat_id'    => null,
+                    'channel_id' => null,
+                    'action'     => $action,
+                    'users'      => [],
+                    'chats'      => [],
+                ];
+            } catch (\Exception $e) {}
+
+        } elseif ($ctor === self::UPDATE_CHAT_USER_TYPING) {
+            // updateChatUserTyping#83487af0 chat_id:long from_id:Peer action:SendMessageAction
+            try {
+                $chatId   = $r->readLong();
+                $fromPeer = TLSkipHelper::readPeer($r);
+                $action   = TLSkipHelper::readSendMessageAction($r);
+                $result = [
+                    'type'       => 'typing',
+                    'user_id'    => $fromPeer['id'],
+                    'chat_id'    => $chatId,
+                    'channel_id' => null,
+                    'action'     => $action,
+                    'users'      => [],
+                    'chats'      => [],
+                ];
+            } catch (\Exception $e) {}
+
+        } elseif ($ctor === self::UPDATE_CHANNEL_USER_TYPING) {
+            // updateChannelUserTyping#40771900 flags:# channel_id:long top_msg_id:flags.0?int
+            //                                  from_id:Peer action:SendMessageAction
+            try {
+                $flags     = $r->readInt();
+                $channelId = $r->readLong();
+                if ($flags & (1 << 0)) $r->readInt(); // top_msg_id (forum thread)
+                $fromPeer  = TLSkipHelper::readPeer($r);
+                $action    = TLSkipHelper::readSendMessageAction($r);
+                $result = [
+                    'type'       => 'typing',
+                    'user_id'    => $fromPeer['id'],
+                    'chat_id'    => null,
+                    'channel_id' => $channelId,
+                    'action'     => $action,
                     'users'      => [],
                     'chats'      => [],
                 ];

@@ -2583,6 +2583,16 @@ $client->onUpdate(function (RawUpdateEvent $event) use ($client) {
             $status = $event->online ? 'online' : 'offline';
             echo "[STATUS] User #$userId sekarang $status\n";
             break;
+
+        case 'typing':
+            $userId = $event->user_id;
+            $action = $event->action; // '' = cancel, selainnya = label aktivitas
+            if ($action === '') {
+                echo "[TYPING] User #$userId berhenti mengetik\n";
+            } else {
+                echo "[TYPING] User #$userId: $action...\n";
+            }
+            break;
     }
 });
 
@@ -2615,6 +2625,12 @@ $event->pinned      // bool
 $event->user_id     // int
 $event->online      // bool
 $event->was_online  // int — unix timestamp terakhir online
+
+// typing:
+$event->user_id     // int  — ID user yang sedang melakukan aksi (dari Peer)
+$event->chat_id     // ?int — ID grup biasa (null jika DM atau channel)
+$event->channel_id  // ?int — ID channel/supergroup (null jika DM atau grup biasa)
+$event->action      // string — label aktivitas ('' = cancel/berhenti)
 ```
 
 **Semua nilai `$event->type`:**
@@ -2627,6 +2643,7 @@ $event->was_online  // int — unix timestamp terakhir online
 | `read_history` | Riwayat dibaca oleh peer | `$event->direction`, `$event->max_id` |
 | `pinned_messages` | Perubahan pesan yang di-pin | `$event->ids`, `$event->pinned` |
 | `user_status` | Status online user berubah | `$event->user_id`, `$event->online`, `$event->was_online` |
+| `typing` | Seseorang sedang mengetik / aksi input | `$event->user_id`, `$event->chat_id`, `$event->channel_id`, `$event->action` |
 
 ### 29.3 Field FullMessage (untuk new_message & edit_message)
 
@@ -2674,7 +2691,83 @@ $client->onUpdate(function (RawUpdateEvent $event) {
 $client->runUntilDisconnected();
 ```
 
-### 29.5 Troubleshooting: Update Tidak Diterima
+### 29.5 Typing Indicator
+
+Library mendukung tiga konstruktor typing indicator dari MTProto layer 214:
+
+| Konstruktor | Hash | Konteks |
+|-------------|------|---------|
+| `updateUserTyping` | `0xc01e857f` | DM / pesan pribadi |
+| `updateChatUserTyping` | `0x83487af0` | Grup biasa (basic chat) |
+| `updateChannelUserTyping` | `0x40771900` | Supergroup & channel |
+
+**Aturan validitas:** Setiap typing update berlaku selama **6 detik**. Jika tidak ada update baru dalam 6 detik, asumsikan user berhenti mengetik.
+
+**Field `action` (nilai `$event->action`):**
+
+| Nilai String | Konstruktor MTProto | Arti |
+|---|---|---|
+| `'sedang mengetik'` | `sendMessageTypingAction` | Menulis teks |
+| `''` *(kosong)* | `sendMessageCancelAction` | Berhenti / cancel |
+| `'merekam video'` | `sendMessageRecordVideoAction` | Rekam video |
+| `'mengunggah video'` | `sendMessageUploadVideoAction` | Upload video |
+| `'merekam suara'` | `sendMessageRecordAudioAction` | Rekam voice note |
+| `'mengunggah audio'` | `sendMessageUploadAudioAction` | Upload audio |
+| `'mengunggah foto'` | `sendMessageUploadPhotoAction` | Upload foto |
+| `'mengunggah dokumen'` | `sendMessageUploadDocumentAction` | Upload dokumen |
+| `'berbagi lokasi'` | `sendMessageGeoLocationAction` | Share lokasi |
+| `'memilih kontak'` | `sendMessageChooseContactAction` | Memilih kontak |
+| `'bermain game'` | `sendMessageGamePlayAction` | Main inline game |
+| `'merekam video bundar'` | `sendMessageRecordRoundAction` | Rekam video circle |
+| `'mengunggah video bundar'` | `sendMessageUploadRoundAction` | Upload video circle |
+| `'berbicara di panggilan'` | `speakingInGroupCallAction` | Group call aktif |
+| `'memilih stiker'` | `sendMessageChooseStickerAction` | Pilih stiker |
+
+**Contoh — tampilkan typing indicator di chat:**
+
+```php
+$typingExpiry = 0;
+
+$client->onUpdate(function (RawUpdateEvent $event) use (&$typingExpiry) {
+    if ($event->type !== 'typing') return;
+
+    $action = $event->action;
+    $userId = $event->user_id;
+
+    if ($action === '') {
+        // Cancel — user berhenti
+        $typingExpiry = 0;
+        echo "\r[berhenti mengetik]   \r";
+    } else {
+        // Mulai / update
+        $typingExpiry = time() + 6;
+        echo "\r[User #$userId: $action...]";
+        flush();
+    }
+});
+```
+
+**Contoh — filter typing hanya dari peer tertentu:**
+
+```php
+$targetPeerId = 123456789; // user/chat/channel ID
+
+$client->onUpdate(function (RawUpdateEvent $event) use ($targetPeerId) {
+    if ($event->type !== 'typing') return;
+
+    // DM: user_id === targetPeerId, chat_id dan channel_id null
+    $isDM      = $event->user_id  === $targetPeerId && $event->chat_id === null;
+    $isGroup   = $event->chat_id  === $targetPeerId;
+    $isChannel = $event->channel_id === $targetPeerId;
+
+    if (!$isDM && !$isGroup && !$isChannel) return;
+
+    $action = $event->action ?: 'berhenti mengetik';
+    echo "[TYPING] {$action}\n";
+});
+```
+
+### 29.6 Troubleshooting: Update Tidak Diterima
 
 Jika `runUntilDisconnected()` berjalan tapi handler tidak pernah dipanggil:
 

@@ -1522,26 +1522,30 @@ function chat_realtime(TelegramClient $c): void
     //    Bersihkan handler lama agar tidak menumpuk saat mode ini dipanggil ulang
     $c->removeHandlers();
 
-    $lastMsgId   = null;
-    $lastMsgFrom = null;
-    $inputBuffer = '';
+    $lastMsgId     = null;
+    $lastMsgFrom   = null;
+    $inputBuffer   = '';
+
+    // Typing indicator state
+    $typingMsg     = '';    // teks yang ditampilkan (kosong = tidak ada)
+    $typingUntil   = 0;    // unix timestamp expiry (6 detik dari update terakhir)
+    $typingVisible = false; // apakah baris typing sudah dicetak di atas baris prompt
 
     $c->on(new NewMessage(), function ($event) use (
-        $c, $inputPeer, &$lastMsgId, &$lastMsgFrom, &$inputBuffer
+        $c, $inputPeer, &$lastMsgId, &$lastMsgFrom, &$inputBuffer,
+        &$typingMsg, &$typingUntil, &$typingVisible
     ) {
         /** @var \XnoxsProto\TL\Types\FullMessage $msg */
         $msg = $event->message;
 
-        // Tentukan nama pengirim — $msg adalah objek FullMessage, bukan array
+        // Tentukan nama pengirim
         $from = 'Saya';
         if (!$msg->out) {
             $senderId = $msg->fromUserId ?? $msg->peerId;
-            // 1. Coba dari users yang ikut dalam update (untuk group/channel)
             if ($msg->fromUserId !== null && isset($event->users[$msg->fromUserId])) {
                 $u    = $event->users[$msg->fromUserId];
                 $from = trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? ''));
                 if ($from === '') $from = $u->username ?? ('ID:' . $msg->fromUserId);
-            // 2. Fallback: lookup dari peerCache (untuk DM via updateShortMessage)
             } elseif ($senderId !== null) {
                 $from = $c->getPeerName($senderId) ?? ('ID:' . $senderId);
             }
@@ -1550,8 +1554,15 @@ function chat_realtime(TelegramClient $c): void
         $teks = ($msg->text !== '') ? $msg->text : ('[' . ($msg->media['type'] ?? 'media') . ']');
         $time = date('H:i:s');
 
-        // Hapus baris prompt yang sedang aktif, cetak pesan, tulis ulang prompt
+        // Hapus baris prompt; jika baris typing tercetak, hapus juga
         echo "\r\033[K";
+        if ($typingVisible) {
+            echo "\033[A\r\033[K";
+            $typingVisible = false;
+            $typingMsg     = '';
+            $typingUntil   = 0;
+        }
+
         echo "  " . C_GRAY . "[$time]" . C_RESET . " "
            . C_CYAN . C_BOLD . sprintf("%-18s", $from . ':') . C_RESET . " "
            . $teks . "\n";
@@ -1559,7 +1570,56 @@ function chat_realtime(TelegramClient $c): void
         $lastMsgId   = $msg->id;
         $lastMsgFrom = $from;
 
-        // Tulis ulang prompt + isi buffer yang sedang diketik
+        echo C_GRAY . "  » " . C_RESET . $inputBuffer;
+        flush();
+    });
+
+    // Handler typing indicator — menerima semua raw update, filter per peer
+    $c->onUpdate(function ($event) use (
+        $c, $peerId, $tipePeer, &$inputBuffer,
+        &$typingMsg, &$typingUntil, &$typingVisible
+    ) {
+        if ($event->type !== 'typing') return;
+        $data = $event->data;
+
+        // Filter: hanya tampilkan typing dari peer yang sedang dibuka
+        $isOurPeer = false;
+        if ($tipePeer === 'user'
+            && ($data['user_id'] ?? null) === $peerId
+            && ($data['chat_id'] ?? null) === null
+            && ($data['channel_id'] ?? null) === null
+        ) {
+            $isOurPeer = true;
+        } elseif ($tipePeer === 'chat' && ($data['chat_id'] ?? null) === $peerId) {
+            $isOurPeer = true;
+        } elseif ($tipePeer === 'channel' && ($data['channel_id'] ?? null) === $peerId) {
+            $isOurPeer = true;
+        }
+        if (!$isOurPeer) return;
+
+        $action      = $data['action'] ?? '';
+        $isCancelled = ($action === '');
+
+        // Hapus baris prompt aktif
+        echo "\r\033[K";
+        // Hapus baris typing lama jika ada (satu baris di atas prompt)
+        if ($typingVisible) {
+            echo "\033[A\r\033[K";
+            $typingVisible = false;
+        }
+
+        if (!$isCancelled) {
+            $userId   = $data['user_id'] ?? 0;
+            $nama     = ($userId ? ($c->getPeerName($userId) ?? null) : null) ?? 'Seseorang';
+            $typingMsg   = "$nama $action...";
+            $typingUntil = time() + 6;
+            echo C_GRAY . "  ✎ " . $typingMsg . C_RESET . "\n";
+            $typingVisible = true;
+        } else {
+            $typingMsg   = '';
+            $typingUntil = 0;
+        }
+
         echo C_GRAY . "  » " . C_RESET . $inputBuffer;
         flush();
     });
@@ -1581,6 +1641,16 @@ function chat_realtime(TelegramClient $c): void
 
         // Poll update dari Telegram (non-blocking, timeout=0)
         try { $c->pollOnce(0); } catch (\Throwable) {}
+
+        // Cek expiry typing indicator (6 detik validity per spek MTProto)
+        if ($typingVisible && time() > $typingUntil) {
+            echo "\r\033[K";        // hapus baris prompt
+            echo "\033[A\r\033[K"; // naik ke baris typing, hapus
+            $typingVisible = false;
+            $typingMsg     = '';
+            echo C_GRAY . "  » " . C_RESET . $inputBuffer;
+            flush();
+        }
 
         // Baca satu karakter dari stdin (non-blocking)
         $ch = fgetc(STDIN);

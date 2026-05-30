@@ -465,7 +465,7 @@ class TelegramClient
      * Panggil updates.getState agar server Telegram tahu client siap menerima update.
      * Wajib dipanggil sekali setelah login — tanpa ini server tidak push update baru.
      */
-    private function syncUpdateState(): void
+    public function syncUpdateState(): void
     {
         try {
             $req = new UpdatesGetStateRequest();
@@ -1243,39 +1243,72 @@ class TelegramClient
     public function runUntilDisconnected(): void
     {
         $this->shouldStop = false;
-        $lastPing = time();
 
-        // Install SIGINT handler if pcntl extension available
+        // Install SIGINT/SIGTERM handler
         if (function_exists('pcntl_signal')) {
-            pcntl_signal(SIGINT, function () { $this->shouldStop = true; });
+            pcntl_signal(SIGINT,  function () { $this->shouldStop = true; });
             pcntl_signal(SIGTERM, function () { $this->shouldStop = true; });
         }
 
-        while (!$this->shouldStop && $this->isConnected()) {
+        // ── Pastikan koneksi hidup sebelum mulai ─────────────────────────────
+        // Koneksi bisa mati jika user lama di menu sebelum memilih listen.
+        // Telegram drop idle TCP connection setelah ~30-60 detik.
+        if (!$this->isConnected()) {
+            try {
+                $this->connect();
+                $this->syncUpdateState();
+            } catch (\Throwable $e) {
+                throw new \RuntimeException('Tidak bisa terhubung ke Telegram: ' . $e->getMessage(), 0, $e);
+            }
+        } else {
+            // Koneksi masih hidup — pastikan server tahu kita siap terima update
+            $this->syncUpdateState();
+        }
+
+        $lastPing = time();
+
+        while (!$this->shouldStop) {
             if (function_exists('pcntl_signal_dispatch')) {
                 pcntl_signal_dispatch();
             }
 
-            // Dispatch update yang tertahan selama API call sebelumnya
-            foreach ($this->sender->drainPendingUpdates() as $pending) {
-                $this->dispatchUpdate($pending);
+            // ── Auto-reconnect jika koneksi putus di tengah loop ─────────────
+            if (!$this->isConnected()) {
+                $reconnected = false;
+                for ($try = 0; $try < 5; $try++) {
+                    try {
+                        sleep(min(1 + $try, 5));
+                        $this->connect();
+                        $this->syncUpdateState();
+                        $lastPing    = time();
+                        $reconnected = true;
+                        break;
+                    } catch (\Throwable) {}
+                }
+                if (!$reconnected) break; // gagal reconnect, keluar
+                continue;
             }
 
-            // Kirim ping tiap 20 detik agar koneksi update tetap aktif
+            // ── Dispatch pending updates dari API call sebelumnya ─────────────
+            foreach ($this->sender->drainPendingUpdates() as $pending) {
+                try { $this->dispatchUpdate($pending); } catch (\Throwable) {}
+            }
+
+            // ── Ping tiap 20 detik ────────────────────────────────────────────
             if (time() - $lastPing >= 20) {
                 try { $this->sender->ping(); } catch (\Throwable) {}
                 $lastPing = time();
             }
 
+            // ── Baca satu update (timeout 1 detik) ───────────────────────────
             try {
                 $update = $this->sender->receiveUpdate(1);
-            } catch (\Exception $e) {
-                // Connection error — break loop
-                break;
+            } catch (\Throwable) {
+                continue; // packet rusak / koneksi bermasalah — coba lagi
             }
 
             if ($update !== null) {
-                $this->dispatchUpdate($update);
+                try { $this->dispatchUpdate($update); } catch (\Throwable) {}
             }
         }
     }
@@ -1490,7 +1523,7 @@ class TelegramClient
         if (!empty($this->rawUpdateHandlers)) {
             $rawEvent = new RawUpdateEvent($type, $update);
             foreach ($this->rawUpdateHandlers as $handler) {
-                try { $handler($rawEvent); } catch (\Exception $e) {}
+                try { $handler($rawEvent); } catch (\Throwable) {}
             }
         }
 

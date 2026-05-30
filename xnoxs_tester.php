@@ -1404,6 +1404,7 @@ function menu_event(TelegramClient $c): void
                             $detail = substr(json_encode($event->data), 0, 100);
                     }
                     printf("  [%s] %-20s %s\n", date('H:i:s'), $event->type, $detail);
+                    flush();
                 });
                 coba(fn() => $c->runUntilDisconnected());
                 break;

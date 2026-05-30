@@ -21,10 +21,10 @@ use XnoxsProto\TL\Types\Chat;
  */
 class UpdateParser
 {
-    const UPDATE_SHORT_MESSAGE      = 0x78d4dec1;
-    const UPDATE_SHORT_CHAT_MESSAGE = 0x9e0d9b1f;
+    const UPDATE_SHORT_MESSAGE      = 0x313bc7f8;
+    const UPDATE_SHORT_CHAT_MESSAGE = 0x4d6deea5;
     const UPDATES                   = 0x74ae4240;
-    const UPDATE_SHORT              = 0x11f1331c;
+    const UPDATE_SHORT              = 0x78d4dec1;
     const UPDATES_COMBINED          = 0xae0b0d43;
     const UPDATES_TOO_LONG          = 0x62d6b459;
     const NEW_SESSION_CREATED       = 0x9ec20908;

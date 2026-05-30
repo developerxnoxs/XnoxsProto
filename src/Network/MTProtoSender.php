@@ -193,6 +193,59 @@ class MTProtoSender
     }
 
     /**
+     * Baca + parse satu raw packet dan kembalikan info debug (ctor hex, nama, isi container).
+     * Return null jika tidak ada data dalam timeout.
+     */
+    public function receiveDebug(int $timeoutSeconds = 2): ?array
+    {
+        $raw = $this->connection->tryRecv($timeoutSeconds);
+        if ($raw === null) return null;
+
+        try {
+            $pt = $this->decryptPacket($raw);
+        } catch (\Throwable $e) {
+            return ['error' => 'decrypt: ' . $e->getMessage(), 'raw_len' => strlen($raw)];
+        }
+
+        try {
+            $ctor  = $pt->readInt();
+            $info  = ['ctor' => sprintf('0x%08x', $ctor & 0xFFFFFFFF), 'raw_len' => strlen($raw)];
+
+            static $names = [
+                0xf35c6d01 => 'rpc_result',       0x73f1f8dc => 'msg_container',
+                0x62d6b459 => 'msgs_ack',          0x9ec20908 => 'new_session_created',
+                0xedab447b => 'bad_server_salt',   0x347773c5 => 'pong',
+                0x3072cfa1 => 'gzip_packed',       0x74ae4240 => 'updates',
+                0xae0b0d43 => 'updatesCombined',   0x78d4dec1 => 'updateShortMessage',
+                0x9e0d9b1f => 'updateShortChatMessage', 0x11f1331c => 'updateShort',
+                0x62d6b459 => 'msgs_ack',
+            ];
+            $info['name'] = $names[$ctor & 0xFFFFFFFF] ?? 'UNKNOWN';
+
+            // Kalau container, bongkar isi
+            if (($ctor & 0xFFFFFFFF) === 0x73f1f8dc) {
+                $count   = $pt->readInt();
+                $inner   = [];
+                for ($i = 0; $i < $count; $i++) {
+                    try {
+                        $pt->readLong(); $pt->readInt();
+                        $bytes     = $pt->readInt();
+                        $innerCtor = $pt->readInt();
+                        $inner[]   = ['ctor' => sprintf('0x%08x', $innerCtor & 0xFFFFFFFF),
+                                      'name' => $names[$innerCtor & 0xFFFFFFFF] ?? 'UNKNOWN',
+                                      'bytes' => $bytes];
+                        if ($bytes > 4) $pt->read($bytes - 4);
+                    } catch (\Throwable) { break; }
+                }
+                $info['container'] = $inner;
+            }
+            return $info;
+        } catch (\Throwable $e) {
+            return ['error' => 'parse: ' . $e->getMessage(), 'raw_len' => strlen($raw)];
+        }
+    }
+
+    /**
      * Try to receive a server-pushed update within $timeoutSeconds.
      * Returns parsed update array or null if no update within timeout.
      *

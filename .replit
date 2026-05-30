@@ -19,6 +19,10 @@ author = "agent"
 task = "workflow.run"
 args = "Interactive Login"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Debug Updates"
+
 [[workflows.workflow]]
 name = "Interactive Login"
 author = "agent"
@@ -29,6 +33,17 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "TG_API_ID=19001991 TG_API_HASH=f3eb78228439ad8ac3b81729df992a9a php xnoxs_tester.php"
+
+[[workflows.workflow]]
+name = "Debug Updates"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "php debug_updates.php"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [userenv]
 

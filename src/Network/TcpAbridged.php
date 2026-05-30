@@ -131,20 +131,34 @@ class TcpAbridged
             return null;
         }
 
-        $read   = [$this->socket];
-        $write  = null;
-        $except = null;
+        $deadline = microtime(true) + $timeoutSeconds;
 
-        $result = stream_select($read, $write, $except, $timeoutSeconds, 0);
+        while (true) {
+            $read    = [$this->socket];
+            $write   = null;
+            $except  = null;
+            $remaining = max(0, (int)ceil($deadline - microtime(true)));
 
-        if ($result === false || $result === 0) {
-            return null;
-        }
+            // @ suppresses the EINTR warning ("Interrupted system call")
+            $result = @stream_select($read, $write, $except, $remaining, 0);
 
-        try {
-            return $this->recv();
-        } catch (\Exception $e) {
-            return null;
+            if ($result === false) {
+                // EINTR — sinyal diterima, cek apakah masih ada waktu tersisa
+                if (microtime(true) < $deadline) {
+                    continue; // retry
+                }
+                return null;
+            }
+
+            if ($result === 0) {
+                return null; // timeout
+            }
+
+            try {
+                return $this->recv();
+            } catch (\Exception $e) {
+                return null;
+            }
         }
     }
 

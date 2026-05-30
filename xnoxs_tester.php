@@ -1379,7 +1379,31 @@ function menu_event(TelegramClient $c): void
                 subjudul("Listen Semua Update Mentah (Ctrl+C untuk berhenti)");
                 echo "\n  Mendengarkan update... tekan Ctrl+C untuk berhenti.\n\n";
                 $c->onUpdate(function ($event) {
-                    printf("  [%s] Update: %s\n", date('H:i:s'), substr(json_encode($event->raw ?? []), 0, 120));
+                    $detail = '';
+                    switch ($event->type) {
+                        case 'new_message':
+                            $m      = $event->message;
+                            $from   = $m->fromUserId ? "dari ID:{$m->fromUserId}" : "(outgoing)";
+                            $teks   = substr($m->text ?? '[media/service]', 0, 60);
+                            $detail = "$from | \"{$teks}\"";
+                            break;
+                        case 'edit_message':
+                            $m      = $event->message;
+                            $detail = "msg_id:{$m->id} teks baru: " . substr($m->text ?? '', 0, 50);
+                            break;
+                        case 'delete_messages':
+                            $detail = "ids: " . implode(',', $event->ids ?? []);
+                            break;
+                        case 'user_status':
+                            $detail = "user_id:{$event->user_id} " . ($event->online ? 'ONLINE' : 'offline');
+                            break;
+                        case 'read_history':
+                            $detail = "max_id:{$event->max_id} arah:{$event->direction}";
+                            break;
+                        default:
+                            $detail = substr(json_encode($event->data), 0, 100);
+                    }
+                    printf("  [%s] %-20s %s\n", date('H:i:s'), $event->type, $detail);
                 });
                 coba(fn() => $c->runUntilDisconnected());
                 break;

@@ -27,10 +27,7 @@ if (!$API_ID || !$API_HASH) {
 $sessionsDir = __DIR__ . '/sessions';
 @mkdir($sessionsDir, 0755, true);
 
-$sessionFiles = array_merge(
-    glob($sessionsDir . '/*.session') ?: [],
-    glob($sessionsDir . '/*.json')    ?: []
-);
+$sessionFiles = glob($sessionsDir . '/*.session') ?: [];
 $sessionFile = !empty($sessionFiles) ? $sessionFiles[0] : null;
 
 // ══════════════════════════════════════════════════════════════════════════════

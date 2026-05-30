@@ -485,7 +485,7 @@ class TelegramClient
             }
         }
 
-        $sessionFile   = $dir . DIRECTORY_SEPARATOR . 'session_' . $phoneClean . '.json';
+        $sessionFile   = $dir . DIRECTORY_SEPARATOR . $phoneClean . '.session';
         $this->session = new \XnoxsProto\Sessions\FileSession($sessionFile);
 
         // Jika sudah terhubung dengan session lama (MemorySession), putus dulu

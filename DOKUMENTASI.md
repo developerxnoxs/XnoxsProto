@@ -3106,6 +3106,8 @@ echo $result['peer_id'];        // ID grup/supergroup
 echo $result['banned_rights'];  // bitmask flag yang dilarang
 ```
 
+> **Catatan:** Jika permission yang dikirim sama dengan yang sudah berlaku, Telegram akan melempar `[400] CHAT_NOT_MODIFIED`. Pastikan nilai yang dikirim berbeda dari kondisi saat ini.
+
 ---
 
 ### 32.11 Tanda Tangan Admin di Channel (Signatures)

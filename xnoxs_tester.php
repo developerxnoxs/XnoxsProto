@@ -1,11 +1,6 @@
 <?php
 /**
  * XnoxsProto — Script Uji Fitur Lengkap
- *
- * Jalankan:
- *   TG_API_ID=xxx TG_API_HASH=yyy php xnoxs_tester.php
- *
- * Atau isi konstanta API_ID dan API_HASH di bawah.
  */
 
 require_once __DIR__ . '/vendor/autoload.php';
@@ -16,12 +11,8 @@ use XnoxsProto\Exceptions\RPCException;
 use XnoxsProto\Events\NewMessage;
 
 // ── Kredensial ─────────────────────────────────────────────────────────────
-$API_ID   = (int)(getenv('TG_API_ID')   ?: 0);
-$API_HASH = (string)(getenv('TG_API_HASH') ?: '');
-
-if (!$API_ID || !$API_HASH) {
-    die("[ERROR] Set TG_API_ID dan TG_API_HASH terlebih dahulu.\n");
-}
+$API_ID   = 19001991;
+$API_HASH = 'f3eb78228439ad8ac3b81729df992a9a';
 
 // ── Cari session yang sudah ada ────────────────────────────────────────────
 $sessionsDir = __DIR__ . '/sessions';

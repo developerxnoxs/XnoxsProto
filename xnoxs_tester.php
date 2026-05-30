@@ -475,10 +475,29 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 subjudul("Hapus Sesi Tertentu");
                 $sessions = coba(fn() => $c->getAccount()->getAuthorizations());
                 if (!$sessions) { jeda(); break; }
+                // Tampilkan semua sesi — sesi aktif ditandai ★ AKTIF (tidak bisa dipilih)
+                echo "\n  Semua sesi aktif:\n";
+                foreach ($sessions as $i => $s) {
+                    $aktif = !empty($s['current']);
+                    printf("  %s %-2s %s — %s — IP:%s (%s) — %s\n",
+                        $aktif ? '★' : ' ',
+                        $aktif ? '[AKTIF]' : '',
+                        $s['device_model'] ?? '?',
+                        $s['app_name']     ?? '?',
+                        $s['ip']           ?? '?',
+                        $s['country']      ?? '?',
+                        $s['date_active']  ?? '?'
+                    );
+                }
+                echo "\n";
                 $nonCurrent = array_values(array_filter($sessions, fn($s) => empty($s['current'])));
-                if (empty($nonCurrent)) { info("Tidak ada sesi lain selain sesi ini."); jeda(); break; }
+                if (empty($nonCurrent)) { info("Tidak ada sesi lain selain sesi aktif ini."); jeda(); break; }
                 $items = array_map(fn($s) => [
-                    'label' => sprintf("%s — %s — IP:%s (%s)", $s['device_model'] ?? '?', $s['app_name'] ?? '?', $s['ip'] ?? '?', $s['country'] ?? '?'),
+                    'label' => sprintf("%s — %s — IP:%s (%s)",
+                        $s['device_model'] ?? '?',
+                        $s['app_name']     ?? '?',
+                        $s['ip']           ?? '?',
+                        $s['country']      ?? '?'),
                     'data'  => $s,
                 ], $nonCurrent);
                 $pick = pilihList($items, "Pilih sesi yang akan dihapus");

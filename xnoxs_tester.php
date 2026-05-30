@@ -1474,9 +1474,18 @@ function chat_realtime(TelegramClient $c): void
     $peerId   = $dialog['id'];
     $namaPeer = trim(($dialog['title'] ?? '') ?: ($dialog['username'] ?? "ID:$peerId"));
 
+    // Bangun InputPeer langsung dari data dialog (sudah mengandung access_hash)
+    // agar tidak bergantung pada cache resolvePeer yang mungkin belum lengkap
+    $accessHash = (int)($dialog['access_hash'] ?? 0);
+    $inputPeer  = match($dialog['type'] ?? 'user') {
+        'chat'    => \XnoxsProto\TL\Types\InputPeer::chat($peerId),
+        'channel' => \XnoxsProto\TL\Types\InputPeer::channel($peerId, $accessHash),
+        default   => \XnoxsProto\TL\Types\InputPeer::user($peerId, $accessHash),
+    };
+
     // 2. Tampilkan 10 pesan terakhir sebagai konteks
     subjudul("Riwayat 10 Pesan Terakhir — $namaPeer");
-    $history = coba(fn() => $c->getHistory($peerId, 10));
+    $history = coba(fn() => $c->getHistory($inputPeer, 10));
     if ($history) {
         foreach (array_reverse($history) as $msg) {
             $from = $msg['from_name'] ?? 'Saya';
@@ -1505,7 +1514,7 @@ function chat_realtime(TelegramClient $c): void
     $inputBuffer = '';
 
     $c->on(new NewMessage(), function ($event) use (
-        $peerId, &$lastMsgId, &$lastMsgFrom, &$inputBuffer
+        $inputPeer, &$lastMsgId, &$lastMsgFrom, &$inputBuffer
     ) {
         $msg  = $event->message;
         $from = $msg['from_name'] ?? ('ID:' . ($msg['from_id'] ?? '?'));
@@ -1585,7 +1594,7 @@ function chat_realtime(TelegramClient $c): void
             }
 
             // Kirim pesan
-            $res = coba(fn() => $c->sendMessage($peerId, $input, $replyTo));
+            $res = coba(fn() => $c->sendMessage($inputPeer, $input, $replyTo));
             if ($res) {
                 $timeStr = date('H:i:s');
                 $replyInfo = $replyTo ? " (↩ #$replyTo {$lastMsgFrom})" : '';

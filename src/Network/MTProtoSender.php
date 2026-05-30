@@ -511,8 +511,14 @@ class MTProtoSender
                 } elseif ($innerConstructor === 0x347773c5) {
                     // pong — skip msg_id + ping_id (2 longs)
                     try { $plaintextReader->readLong(); $plaintextReader->readLong(); } catch (\Throwable) {}
+                } elseif ($innerConstructor === 0x62d6b459) {
+                    // msgs_ack — skip payload (bukan update, jangan di-parse sebagai update)
+                    $skip = $innerBytes - 4;
+                    if ($skip > 0) try { $plaintextReader->read($skip); } catch (\Throwable) { break; }
                 } elseif (UpdateParser::isUpdateConstructor($innerConstructor)) {
                     // Update dalam container — queue, jangan dibuang
+                    // Catat posisi awal agar bisa skip sisa bytes jika parse tidak konsumsi semua
+                    $payloadSize = $innerBytes - 4;
                     try {
                         $parsed = UpdateParser::parse($innerConstructor, $plaintextReader);
                         if ($parsed !== null) {
@@ -521,6 +527,9 @@ class MTProtoSender
                             } else {
                                 $this->pendingUpdates[] = $parsed;
                             }
+                        } else {
+                            // parse() mengembalikan null tanpa baca payload → skip manual
+                            if ($payloadSize > 0) try { $plaintextReader->read($payloadSize); } catch (\Throwable) { break; }
                         }
                     } catch (\Throwable) {
                         $skip = $innerBytes - 4;

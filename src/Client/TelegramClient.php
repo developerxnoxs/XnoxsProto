@@ -1519,6 +1519,15 @@ class TelegramClient
             $this->cacheChatPeer($chat);
         }
 
+        // --- Pasang client ke message SEBELUM handler dipanggil ---
+        // Ini wajib agar msg->click() bisa berjalan dari dalam onUpdate callback
+        if (($type === 'new_message' || $type === 'edit_message') && isset($update['message'])) {
+            /** @var FullMessage $msg */
+            $msg           = $update['message'];
+            $peerInputPeer = $this->buildPeerForMessage($msg, $update['users'] ?? [], $update['chats'] ?? []);
+            $msg->setClient($this, $peerInputPeer);
+        }
+
         // --- Dispatch raw update handlers (all types) ---
         if (!empty($this->rawUpdateHandlers)) {
             $rawEvent = new RawUpdateEvent($type, $update);

@@ -3748,6 +3748,58 @@ $client->onUpdate(function (RawUpdateEvent $event) {
 $client->runUntilDisconnected();
 ```
 
+### 29.6 Troubleshooting: Update Tidak Diterima
+
+Jika `runUntilDisconnected()` berjalan tapi handler tidak pernah dipanggil, gunakan checklist berikut.
+
+#### Langkah 1 — Verifikasi paket memang tiba
+
+Tambahkan echo sementara langsung di `receiveUpdate()` dalam `MTProtoSender.php`:
+
+```php
+public function receiveUpdate(int $timeoutSeconds = 1): ?array
+{
+    $raw = $this->connection->tryRecv($timeoutSeconds);
+    if ($raw === null) return null;
+
+    fwrite(STDERR, '[recv ' . strlen($raw) . 'B] ');   // ← tambahkan ini
+    // ... lanjut kode asli
+```
+
+Jalankan script, kirim pesan dari akun lain. Jika muncul `[recv 104B]` maka **paket tiba** — masalah ada di parser. Jika tidak muncul sama sekali — masalah ada di koneksi TCP.
+
+#### Langkah 2 — Baca constructor yang diterima
+
+Tambahkan echo constructor tepat setelah `$constructor = $plaintextReader->readInt()`:
+
+```php
+$constructor = $plaintextReader->readInt();
+fwrite(STDERR, sprintf('ctor=0x%08x', $constructor & 0xFFFFFFFF) . "\n");
+```
+
+Output yang diharapkan saat pesan DM masuk: `ctor=0x313bc7f8`
+
+#### Langkah 3 — Diagnosa dari output
+
+| Output yang terlihat | Artinya | Solusi |
+|----------------------|---------|--------|
+| `[recv NB] ctor=0x313bc7f8` → tidak ada output handler | Constructor tidak dikenali `isUpdateConstructor()` | Update konstanta `UPDATE_SHORT_MESSAGE` di `UpdateParser.php` |
+| `[recv NB] ctor=0x313bc7f8` → `parse_exc:Not enough data` | Constructor dikenali tapi struktur TL salah | Periksa urutan baca field di `parseShortMessage()` |
+| `[recv NB] ctor=0x78d4dec1` → `parse_exc:Not enough data` | Parser mencoba baca `updateShortChatMessage/ShortMessage` dari paket `updateShort` | Constructor tertukar — lihat Seksi 30.1 |
+| Tidak ada output sama sekali | Koneksi tidak terbentuk atau langsung `feof()` | Periksa `isConnected()` sebelum loop, tambah reconnect logic |
+
+#### Konstanta yang harus benar di `UpdateParser.php`
+
+```php
+const UPDATE_SHORT_MESSAGE      = 0x313bc7f8;  // updateShortMessage (DM)
+const UPDATE_SHORT_CHAT_MESSAGE = 0x4d6deea5;  // updateShortChatMessage (grup)
+const UPDATE_SHORT              = 0x78d4dec1;  // updateShort (satu Update + date)
+const UPDATES                   = 0x74ae4240;  // updates bundle
+const UPDATES_COMBINED          = 0xae0b0d43;  // updatesCombined bundle
+```
+
+> **Perhatian:** `0x78d4dec1` dulu dipakai untuk `updateShortMessage` di layer lama. Di layer saat ini, ID tersebut adalah `updateShort` yang strukturnya **berbeda** (berisi satu inner `Update` + `date:int`). Menukarnya menyebabkan parser kekurangan byte dan throw `"Not enough data to read"`.
+
 ---
 
 *Dokumentasi ini dibuat berdasarkan implementasi nyata XnoxsProto versi 1.1.0 (Layer 214).*  

@@ -97,13 +97,12 @@ function pilihList(array $items, string $prompt = 'Pilih nomor'): ?array
 function pilihDialog(TelegramClient $c, string $prompt = 'Pilih chat'): ?array
 {
     echo "  Mengambil dialog...\n";
-    $dialogs = coba(fn() => $c->getDialogs(80));
+    $dialogs = coba(fn() => $c->getDialogs(100));
     if (!$dialogs) return null;
     $items = array_map(fn($d) => [
-        'label' => sprintf("%-10s | %s%s",
-            '[' . ($d['type'] ?? '?') . ']',
-            $d['title'] ?? 'Tanpa Nama',
-            !empty($d['username']) ? " (@{$d['username']})" : ''),
+        'label' => sprintf("%-30s %s",
+            substr($d['title'] ?? 'Tanpa Nama', 0, 30),
+            !empty($d['username']) ? "@{$d['username']}" : "ID:{$d['id']}"),
         'data'  => $d,
     ], $dialogs);
     $pick = pilihList($items, $prompt);
@@ -1474,14 +1473,16 @@ function chat_realtime(TelegramClient $c): void
     $peerId   = $dialog['id'];
     $namaPeer = trim(($dialog['title'] ?? '') ?: ($dialog['username'] ?? "ID:$peerId"));
 
-    // Bangun InputPeer langsung dari data dialog (sudah mengandung access_hash)
-    // agar tidak bergantung pada cache resolvePeer yang mungkin belum lengkap
-    $accessHash = (int)($dialog['access_hash'] ?? 0);
-    $inputPeer  = match($dialog['type'] ?? 'user') {
-        'chat'    => \XnoxsProto\TL\Types\InputPeer::chat($peerId),
-        'channel' => \XnoxsProto\TL\Types\InputPeer::channel($peerId, $accessHash),
-        default   => \XnoxsProto\TL\Types\InputPeer::user($peerId, $accessHash),
-    };
+    // Bangun InputPeer menggunakan resolvePeer — peerCache sudah diisi oleh getDialogs
+    // di dalam pilihDialog, termasuk batch-fetch access_hash untuk min-user.
+    // Jangan bangun manual dengan (int)($dialog['access_hash'] ?? 0) karena null→0 menyebabkan
+    // [400] PEER_ID_INVALID untuk user yang access_hash-nya belum tersedia saat parse dialog.
+    try {
+        $inputPeer = $c->resolvePeer($peerId);
+    } catch (\Throwable $e) {
+        err("Tidak dapat resolve peer: " . $e->getMessage());
+        return;
+    }
 
     // 2. Tampilkan 10 pesan terakhir sebagai konteks
     subjudul("Riwayat 10 Pesan Terakhir — $namaPeer");

@@ -346,10 +346,11 @@ class MTProtoSender
             }
 
             if (UpdateParser::isUpdateConstructor($innerCtor)) {
+                // Catat posisi akhir payload agar bisa seek ke sana setelah parse
+                $payloadEnd = $reader->tell() + ($innerBytes - 4);
                 try {
                     $parsed = UpdateParser::parse($innerCtor, $reader);
                     if ($parsed !== null) {
-                        // Flatten multi already returned by UpdateParser
                         if ($parsed['type'] === 'multi') {
                             foreach ($parsed['updates'] as $sub) {
                                 $collected[] = $sub;
@@ -358,18 +359,16 @@ class MTProtoSender
                             $collected[] = $parsed;
                         }
                     }
-                } catch (\Exception $e) {
-                    // Skip remaining payload for this item
-                    $skip = $innerBytes - 4;
-                    if ($skip > 0) { try { $reader->read($skip); } catch (\Exception $e2) { break; } }
-                }
+                } catch (\Throwable) {}
+                // Selalu lompat ke akhir payload yang benar
+                try { $reader->seek($payloadEnd); } catch (\Throwable) { break; }
                 continue;
             }
 
             // Unknown — skip
             $skip = $innerBytes - 4;
             if ($skip > 0) {
-                try { $reader->read($skip); } catch (\Exception $e) { break; }
+                try { $reader->read($skip); } catch (\Throwable) { break; }
             }
         }
 
@@ -511,32 +510,26 @@ class MTProtoSender
                 } elseif ($innerConstructor === 0x347773c5) {
                     // pong — skip msg_id + ping_id (2 longs)
                     try { $plaintextReader->readLong(); $plaintextReader->readLong(); } catch (\Throwable) {}
-                } elseif ($innerConstructor === 0x62d6b459) {
-                    // msgs_ack — skip payload (bukan update, jangan di-parse sebagai update)
-                    $skip = $innerBytes - 4;
-                    if ($skip > 0) try { $plaintextReader->read($skip); } catch (\Throwable) { break; }
-                } elseif (UpdateParser::isUpdateConstructor($innerConstructor)) {
-                    // Update dalam container — queue, jangan dibuang
-                    // Catat posisi awal agar bisa skip sisa bytes jika parse tidak konsumsi semua
-                    $payloadSize = $innerBytes - 4;
-                    try {
-                        $parsed = UpdateParser::parse($innerConstructor, $plaintextReader);
-                        if ($parsed !== null) {
-                            if ($parsed['type'] === 'multi') {
-                                foreach ($parsed['updates'] as $sub) { $this->pendingUpdates[] = $sub; }
-                            } else {
-                                $this->pendingUpdates[] = $parsed;
-                            }
-                        } else {
-                            // parse() mengembalikan null tanpa baca payload → skip manual
-                            if ($payloadSize > 0) try { $plaintextReader->read($payloadSize); } catch (\Throwable) { break; }
-                        }
-                    } catch (\Throwable) {
-                        $skip = $innerBytes - 4;
-                        if ($skip > 0) try { $plaintextReader->read($skip); } catch (\Throwable) { break; }
-                    }
                 } else {
-                    $plaintextReader->read($innerBytes - 4);
+                    // Semua inner message lain (msgs_ack, update, unknown):
+                    // Gunakan seek() agar posisi selalu tepat terlepas dari apa yang dibaca parse
+                    $payloadEnd = $plaintextReader->tell() + ($innerBytes - 4);
+                    if (!in_array($innerConstructor, [0x62d6b459], true)
+                        && UpdateParser::isUpdateConstructor($innerConstructor)
+                    ) {
+                        try {
+                            $parsed = UpdateParser::parse($innerConstructor, $plaintextReader);
+                            if ($parsed !== null) {
+                                if ($parsed['type'] === 'multi') {
+                                    foreach ($parsed['updates'] as $sub) { $this->pendingUpdates[] = $sub; }
+                                } else {
+                                    $this->pendingUpdates[] = $parsed;
+                                }
+                            }
+                        } catch (\Throwable) {}
+                    }
+                    // Selalu lompat ke akhir payload yang benar (apapun yang terjadi di parse)
+                    try { $plaintextReader->seek($payloadEnd); } catch (\Throwable) { break; }
                 }
             }
 

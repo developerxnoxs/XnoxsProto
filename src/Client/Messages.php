@@ -479,7 +479,7 @@ class Messages
                     $result[$user->id] = $user;
                 }
             } catch (\Throwable $e) {
-                break;
+                continue;
             }
         }
 

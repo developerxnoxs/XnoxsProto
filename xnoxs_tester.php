@@ -213,14 +213,57 @@ function pilihAnggotaDariGrup(TelegramClient $c, array $grup, string $prompt = '
     }
     if (!$members) { info("Tidak bisa mengambil daftar anggota."); return null; }
 
-    // Normalisasi ke format seragam
+    // ── Enrichment: coba isi nama untuk User#xxx ──────────────────────────
+    // Langkah 1: ambil dari session entity cache (gratis, tanpa API call)
+    $session = $c->getSession();
+    foreach ($members as &$m) {
+        $uid = $m['user_id'] ?? $m['id'] ?? null;
+        if (!$uid) continue;
+        $disp = $m['display'] ?? '';
+        if ($disp !== '' && !str_starts_with($disp, 'User#')) continue; // sudah ada nama
+        $entity = $session->getEntityRowsById($uid);
+        if ($entity) {
+            $fn = trim(($entity['first_name'] ?? '') . ' ' . ($entity['last_name'] ?? ''));
+            if ($fn !== '')                  $m['display'] = $fn;
+            elseif (!empty($entity['username'])) $m['display'] = '@' . $entity['username'];
+            if (!empty($entity['username'])) $m['username'] = $entity['username'];
+        }
+    }
+    unset($m);
+
+    // Langkah 2: untuk yang masih User#xxx, coba batch fetch via users.getUsers
+    $needEnrich = array_filter($members, fn($m) => str_starts_with($m['display'] ?? 'User#', 'User#'));
+    if (!empty($needEnrich)) {
+        $batchInput = array_values(array_map(fn($m) => [
+            'id'          => $m['user_id'] ?? $m['id'] ?? 0,
+            'access_hash' => $m['access_hash'] ?? 0,
+        ], $needEnrich));
+        $fetched = coba(fn() => $c->getMessages()->batchFetchUsers($batchInput));
+        if ($fetched) {
+            foreach ($members as &$m) {
+                $uid = $m['user_id'] ?? $m['id'] ?? null;
+                if (!$uid || !isset($fetched[$uid])) continue;
+                $u = $fetched[$uid];
+                $name = method_exists($u, 'getDisplayName') ? $u->getDisplayName() : null;
+                if ($name && !str_starts_with($name, 'User#')) {
+                    $m['display']    = $name;
+                    $m['first_name'] = $u->firstName ?? $m['first_name'] ?? '';
+                    $m['last_name']  = $u->lastName  ?? $m['last_name']  ?? '';
+                    $m['username']   = $u->username  ?? $m['username']   ?? null;
+                }
+            }
+            unset($m);
+        }
+    }
+    // ── End enrichment ────────────────────────────────────────────────────
+
+    // Normalisasi ke format seragam untuk ditampilkan
     $items = [];
     foreach ($members as $m) {
-        $nama    = $m['display'] ?? (($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? ''));
-        $nama    = trim($nama) ?: 'User#' . ($m['id'] ?? $m['user_id'] ?? '?');
-        $uname   = !empty($m['username']) ? " (@{$m['username']})" : '';
-        $role    = isset($m['role']) ? ' [' . $m['role'] . ']' : '';
-        $uid     = $m['id'] ?? $m['user_id'] ?? null;
+        $uid   = $m['user_id'] ?? $m['id'] ?? null;
+        $nama  = $m['display'] ?? (trim(($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? '')) ?: 'User#' . $uid);
+        $uname = !empty($m['username']) ? " (@{$m['username']})" : '';
+        $role  = isset($m['role']) ? ' [' . $m['role'] . ']' : '';
         $items[] = [
             'label' => $nama . $uname . $role,
             'data'  => array_merge($m, ['id' => $uid]),

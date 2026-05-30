@@ -386,7 +386,7 @@ baris(60, '═');
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ─── 1. Manajemen Akun ────────────────────────────────────────────────────
-function menu_akun(TelegramClient $c): void
+function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession): void
 {
     while (true) {
         judul("1. Manajemen Akun");
@@ -399,6 +399,7 @@ function menu_akun(TelegramClient $c): void
         echo "  [7]  Keluar semua sesi lain\n";
         echo "  [8]  Lihat pengaturan privasi\n";
         echo "  [9]  Ubah pengaturan privasi\n";
+        echo "  [10] Cabut session lokal (.session file)\n";
         echo "  [0]  Kembali\n\n";
 
         switch (inp("Pilih: ")) {
@@ -552,6 +553,42 @@ function menu_akun(TelegramClient $c): void
                     if ($res) ok("Pengaturan privasi diperbarui.");
                 } else {
                     err("Pilihan tidak valid.");
+                }
+                jeda();
+                break;
+
+            case '10': // ── Cabut session lokal
+                subjudul("Cabut Session Lokal");
+                $files = glob($sessionsDir . '/*.session') ?: [];
+                if (empty($files)) {
+                    info("Tidak ada file session di folder sessions/.");
+                    jeda();
+                    break;
+                }
+                $items = array_map(function ($f) use ($activeSession) {
+                    $nama  = basename($f);
+                    $tanda = (realpath($f) === realpath($activeSession)) ? ' ★ AKTIF' : '';
+                    return ['label' => $nama . $tanda, 'data' => $f];
+                }, $files);
+                $pick = pilihList($items, "Pilih session yang akan dicabut");
+                if (!$pick) break;
+                $target    = $pick['data'];
+                $isAktif   = (realpath($target) === realpath($activeSession));
+                $namaFile  = basename($target);
+                if ($isAktif) {
+                    echo "\n  ⚠️   Ini adalah session yang SEDANG AKTIF.\n";
+                    echo "  Setelah dicabut, Anda harus login ulang saat restart.\n";
+                }
+                $konfirm = inp("  Hapus file '$namaFile'? (ya/tidak): ");
+                if (strtolower($konfirm) === 'ya') {
+                    if (@unlink($target)) {
+                        ok("File session '$namaFile' berhasil dihapus.");
+                        if ($isAktif) info("Restart program untuk login ulang.");
+                    } else {
+                        err("Gagal menghapus file: $target");
+                    }
+                } else {
+                    info("Dibatalkan.");
                 }
                 jeda();
                 break;
@@ -1347,7 +1384,7 @@ while (true) {
     echo "\n";
 
     switch (inp("Pilih menu: ")) {
-        case '1': menu_akun($client);                            break;
+        case '1': menu_akun($client, $sessionsDir, $sessionFile ?? ''); break;
         case '2': menu_pesan($client);                           break;
         case '3': menu_media($client, $ASSET_PHOTO, $ASSET_DOC, $ASSET_AUDIO); break;
         case '4': menu_kontak($client);                          break;

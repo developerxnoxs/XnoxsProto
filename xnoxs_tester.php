@@ -1476,12 +1476,12 @@ function chat_realtime(TelegramClient $c): void
 
     // 2. Tampilkan 10 pesan terakhir sebagai konteks
     subjudul("Riwayat 10 Pesan Terakhir — $namaPeer");
-    $history = coba(fn() => $c->getMessages($peerId, 10));
+    $history = coba(fn() => $c->getHistory($peerId, 10));
     if ($history) {
         foreach (array_reverse($history) as $msg) {
             $from = $msg['from_name'] ?? 'Saya';
             $teks = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
-            $time = isset($msg['date']) ? date('H:i:s', $msg['date']) : '--:--:--';
+            $time = !empty($msg['date']) ? date('H:i:s', (int)$msg['date']) : '--:--:--';
             printf("  [%s] %-20s %s\n", $time, $from . ':', substr($teks, 0, 80));
         }
     } else {

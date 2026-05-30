@@ -20,6 +20,9 @@ class MTProtoSender
     private int $salt = 0;
     private int $timeOffset = 0;
 
+    /** Update yang ditangkap selama send() — diambil oleh runUntilDisconnected */
+    private array $pendingUpdates = [];
+
     public function __construct(Connection $connection, AuthKey $authKey, int $timeOffset = 0)
     {
         $this->connection = $connection;
@@ -27,6 +30,61 @@ class MTProtoSender
         $this->sessionId = unpack('P', random_bytes(8))[1];
         $this->timeOffset = $timeOffset;
         $this->salt = unpack('P', random_bytes(8))[1];
+    }
+
+    /**
+     * Ambil semua update yang tertahan selama API call, lalu kosongkan antrian.
+     */
+    public function drainPendingUpdates(): array
+    {
+        $updates = $this->pendingUpdates;
+        $this->pendingUpdates = [];
+        return $updates;
+    }
+
+    /**
+     * Kirim ping#7abe77ec tanpa menunggu pong (fire-and-forget).
+     * Wajib dikirim tiap ~20 detik agar Telegram terus push update.
+     */
+    public function ping(): void
+    {
+        $pingId = unpack('P', random_bytes(8))[1];
+        // ping#7abe77ec id:long
+        $body = pack('V', 0x7abe77ec) . pack('P', $pingId);
+        $this->sendRawBody($body, false);
+    }
+
+    /**
+     * Kirim body TL terenkripsi tanpa menunggu respons.
+     */
+    private function sendRawBody(string $body, bool $contentRelated = true): void
+    {
+        $msgId = $this->getNewMsgId();
+        $seqNo = $this->getSeqNo($contentRelated);
+
+        $writer = new BinaryWriter();
+        $writer->writeLong($this->salt);
+        $writer->writeLong($this->sessionId);
+        $writer->writeLong($msgId);
+        $writer->writeInt($seqNo);
+        $writer->writeInt(strlen($body));
+        $writer->write($body);
+
+        $plaintext = $writer->getValue();
+        $paddingLength = (16 - (strlen($plaintext) % 16)) % 16;
+        if ($paddingLength < 12) $paddingLength += 16;
+        $plaintext .= random_bytes($paddingLength);
+
+        $msgKeyLarge = hash('sha256', substr($this->authKey->getKey(), 88, 32) . $plaintext, true);
+        $msgKey      = substr($msgKeyLarge, 8, 16);
+        $encrypted   = $this->aesCalculate($plaintext, $msgKey, true);
+
+        $packet = new BinaryWriter();
+        $packet->write($this->authKey->getKeyId());
+        $packet->write($msgKey);
+        $packet->write($encrypted);
+
+        $this->connection->send($packet->getValue());
     }
 
     public function send($request): array
@@ -159,12 +217,22 @@ class MTProtoSender
                 [$constructor, $plaintextReader] = $this->decompressGzip($plaintextReader);
             }
 
-            // rpc_result — response to one of our previous messages (ignore in update loop)
+            // rpc_result — response to salah satu request kita (abaikan di update loop)
             if ($constructor === 0xf35c6d01) {
                 return null;
             }
 
-            // msg_container — might contain rpc_results + updates
+            // pong#347773c5 — respons dari ping kita (abaikan)
+            if ($constructor === 0x347773c5) {
+                return null;
+            }
+
+            // msgs_ack#62d6b459 — server ACK pesan kita (abaikan)
+            if ($constructor === 0x62d6b459) {
+                return null;
+            }
+
+            // msg_container — bisa berisi rpc_results + updates
             if ($constructor === 0x73f1f8dc) {
                 return $this->extractUpdateFromContainer($plaintextReader);
             }
@@ -387,6 +455,24 @@ class MTProtoSender
                     $plaintextReader->readInt();  // bad_msg_seqno
                     $plaintextReader->readInt();  // error_code
                     $this->salt = $plaintextReader->readLong();
+                } elseif ($innerConstructor === 0x347773c5) {
+                    // pong — skip msg_id + ping_id (2 longs)
+                    try { $plaintextReader->readLong(); $plaintextReader->readLong(); } catch (\Throwable) {}
+                } elseif (UpdateParser::isUpdateConstructor($innerConstructor)) {
+                    // Update dalam container — queue, jangan dibuang
+                    try {
+                        $parsed = UpdateParser::parse($innerConstructor, $plaintextReader);
+                        if ($parsed !== null) {
+                            if ($parsed['type'] === 'multi') {
+                                foreach ($parsed['updates'] as $sub) { $this->pendingUpdates[] = $sub; }
+                            } else {
+                                $this->pendingUpdates[] = $parsed;
+                            }
+                        }
+                    } catch (\Throwable) {
+                        $skip = $innerBytes - 4;
+                        if ($skip > 0) try { $plaintextReader->read($skip); } catch (\Throwable) { break; }
+                    }
                 } else {
                     $plaintextReader->read($innerBytes - 4);
                 }
@@ -401,13 +487,32 @@ class MTProtoSender
             [$constructor, $plaintextReader] = $this->decompressGzip($plaintextReader);
         }
 
-        // ── Update / service messages ──────────────────────────────────────────
+        // ── pong#347773c5 — respons dari ping kita, abaikan ──────────────────
+        if ($constructor === 0x347773c5) {
+            $nextResponse = $this->connection->recv();
+            return $this->processResponse($nextResponse, $expectedMsgId);
+        }
+
+        // ── Update / service messages — queue agar tidak hilang ──────────────
         $updateCtors = [
             0x74ae4240, 0x78d4dec1, 0x9e0d9b1f,
-            0x11f1331c, 0xae0b0d43, 0x62d6b459, 0x9ec20908,
+            0x11f1331c, 0xae0b0d43, 0x62d6b459,
         ];
 
         if (in_array($constructor, $updateCtors, true)) {
+            // Simpan ke antrian — akan di-dispatch setelah send() selesai
+            try {
+                $parsed = UpdateParser::parse($constructor, $plaintextReader);
+                if ($parsed !== null) {
+                    if ($parsed['type'] === 'multi') {
+                        foreach ($parsed['updates'] as $sub) {
+                            $this->pendingUpdates[] = $sub;
+                        }
+                    } else {
+                        $this->pendingUpdates[] = $parsed;
+                    }
+                }
+            } catch (\Throwable) {}
             $nextResponse = $this->connection->recv();
             return $this->processResponse($nextResponse, $expectedMsgId);
         }

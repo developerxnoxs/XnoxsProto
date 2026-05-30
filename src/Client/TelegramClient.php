@@ -1243,6 +1243,7 @@ class TelegramClient
     public function runUntilDisconnected(): void
     {
         $this->shouldStop = false;
+        $lastPing = time();
 
         // Install SIGINT handler if pcntl extension available
         if (function_exists('pcntl_signal')) {
@@ -1253,6 +1254,17 @@ class TelegramClient
         while (!$this->shouldStop && $this->isConnected()) {
             if (function_exists('pcntl_signal_dispatch')) {
                 pcntl_signal_dispatch();
+            }
+
+            // Dispatch update yang tertahan selama API call sebelumnya
+            foreach ($this->sender->drainPendingUpdates() as $pending) {
+                $this->dispatchUpdate($pending);
+            }
+
+            // Kirim ping tiap 20 detik agar koneksi update tetap aktif
+            if (time() - $lastPing >= 20) {
+                try { $this->sender->ping(); } catch (\Throwable) {}
+                $lastPing = time();
             }
 
             try {

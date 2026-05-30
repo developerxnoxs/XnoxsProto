@@ -8,8 +8,8 @@ use XnoxsProto\TL\BinaryWriter;
 /**
  * channels.editAbout#13e27f1e channel:InputChannel about:string = Bool;
  *
- * Ubah deskripsi/bio channel atau supergroup.
- * Basic group tidak memiliki deskripsi mandiri — migrate dulu ke supergroup.
+ * Ubah deskripsi/bio supergroup atau channel.
+ * Untuk basic group gunakan MessagesEditChatAboutRequest.
  *
  * CRC verified dari TDLib telegram_api.tl (Layer 214).
  *

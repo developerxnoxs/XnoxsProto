@@ -1115,7 +1115,7 @@ $client->runUntilDisconnected();
 | `deleteChat()` | Hapus grup/channel (permanen) | 32 |
 | `migrateChat()` | Upgrade basic group → supergroup | 32 |
 | `editChatTitle()` | Ubah judul | 32 |
-| `editChatAbout()` | Ubah deskripsi channel/supergroup | 32 |
+| `editChatAbout()` | Ubah deskripsi grup/channel/supergroup | 32 |
 | `addChatUser()` | Tambah user ke basic group | 32 |
 | `toggleSlowMode()` | Slow mode supergroup | 32 |
 | `exportInviteLink()` | Generate link undangan | 32 |
@@ -2914,7 +2914,7 @@ echo $result['title'];         // 'Nama Grup Kita'
 | Fitur | Basic Group | Supergroup |
 |-------|-------------|------------|
 | Maks. anggota | 200 | Tidak terbatas |
-| Deskripsi (`editChatAbout`) | ❌ | ✅ |
+| Deskripsi (`editChatAbout`) | ✅ | ✅ |
 | Restrict parsial per user | ❌ | ✅ |
 | Slow mode | ❌ | ✅ |
 | Ban list | ❌ | ✅ |
@@ -2998,17 +2998,19 @@ echo $result['title'];    // 'Nama Baru Grup'
 
 ---
 
-### 32.6 Mengubah Deskripsi Channel / Supergroup
+### 32.6 Mengubah Deskripsi Grup / Channel
 
 ```php
+// Channel atau supergroup
 $result = $client->editChatAbout('@channelku', 'Deskripsi baru yang lebih menarik');
 $result = $client->editChatAbout('@supergroup', ''); // kosongkan deskripsi
+
+// Basic group (gunakan chat_id integer)
+$result = $client->editChatAbout(123456789, 'Deskripsi basic group saya');
 
 echo $result['updated'];  // true
 echo $result['about'];    // deskripsi baru
 ```
-
-> **Basic group tidak didukung.** Memanggil `editChatAbout()` pada basic group akan melempar `RuntimeException`. Solusi: upgrade dulu ke supergroup dengan `migrateChat($chatId)`.
 
 ---
 
@@ -3187,7 +3189,7 @@ echo "Setup supergroup selesai!\n";
 | Method | Kegunaan | Tipe peer |
 |--------|----------|-----------|
 | `editChatTitle($peer, $title)` | Ubah judul | Semua |
-| `editChatAbout($channel, $about)` | Ubah deskripsi | Channel/supergroup saja |
+| `editChatAbout($peer, $about)` | Ubah deskripsi | Semua (basic group, supergroup, channel) |
 | `exportInviteLink($peer, ...)` | Generate link undangan | Semua |
 | `setDefaultPermissions($peer, $flags)` | Default permission anggota | Basic group & supergroup |
 | `toggleSlowMode($channel, $seconds)` | Slow mode | Supergroup |

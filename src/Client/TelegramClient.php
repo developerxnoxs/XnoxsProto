@@ -37,6 +37,7 @@ use XnoxsProto\TL\Functions\MessagesMigrateChatRequest;
 use XnoxsProto\TL\Functions\MessagesEditChatTitleRequest;
 use XnoxsProto\TL\Functions\ChannelsEditTitleRequest;
 use XnoxsProto\TL\Functions\ChannelsEditAboutRequest;
+use XnoxsProto\TL\Functions\MessagesEditChatAboutRequest;
 use XnoxsProto\TL\Functions\MessagesAddChatUserRequest;
 use XnoxsProto\TL\Functions\ChannelsToggleSlowModeRequest;
 use XnoxsProto\TL\Functions\MessagesExportChatInviteRequest;
@@ -3558,13 +3559,13 @@ class TelegramClient
         $accessHash = $info['access_hash'] ?? $inputPeer->getAccessHash();
 
         if ($inputPeer->getType() === InputPeer::CHAT) {
-            throw new \RuntimeException(
-                'editChatAbout: basic group tidak memiliki deskripsi. ' .
-                'Gunakan migrateChat() untuk upgrade ke supergroup terlebih dahulu.'
-            );
+            // Basic group: gunakan messages.editChatAbout#def60797
+            $request = new MessagesEditChatAboutRequest($inputPeer, $about);
+        } else {
+            // Supergroup / channel: gunakan channels.editAbout#13e27f1e
+            $request = new ChannelsEditAboutRequest($channelId, $accessHash, $about);
         }
 
-        $request = new ChannelsEditAboutRequest($channelId, $accessHash, $about);
         $request = $this->wrapFirstRequest($request);
 
         try {

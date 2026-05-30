@@ -980,13 +980,7 @@ function menu_grup(TelegramClient $c): void
                 if (!$ch) break;
                 $anggota = pilihAnggotaDariGrup($c, $ch, "Pilih anggota yang akan dipromosi");
                 if (!$anggota) break;
-                $res = coba(fn() => $c->promoteAdmin($ch['id'], $anggota['id'],
-                    canChangeInfo:     true,
-                    canDeleteMessages: true,
-                    canBanUsers:       true,
-                    canInviteUsers:    true,
-                    canPinMessages:    true
-                ));
+                $res = coba(fn() => $c->promoteAdmin($ch['id'], $anggota['id']));
                 if ($res) ok("Admin dipromosi: " . ($anggota['display'] ?? $anggota['first_name'] ?? 'ID:' . $anggota['id']));
                 jeda();
                 break;

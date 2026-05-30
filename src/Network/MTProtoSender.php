@@ -197,25 +197,28 @@ class MTProtoSender
     }
 
     /**
-     * Extract update from a msg_container, ignoring rpc_results.
+     * Extract ALL updates from a msg_container, ignoring rpc_results.
+     * Returns multi-update array if more than one update found.
      */
     private function extractUpdateFromContainer(BinaryReader $reader): ?array
     {
         $containerSize = $reader->readInt();
+        $collected = [];
+
         for ($i = 0; $i < $containerSize; $i++) {
-            $innerMsgId   = $reader->readLong();
-            $innerSeqNo   = $reader->readInt();
-            $innerBytes   = $reader->readInt();
-            $innerCtor    = $reader->readInt();
+            $reader->readLong(); // inner_msg_id
+            $reader->readInt();  // inner_seqno
+            $innerBytes = $reader->readInt();
+            $innerCtor  = $reader->readInt();
 
             if ($innerCtor === 0xf35c6d01) {
-                // rpc_result — skip
+                // rpc_result — skip payload
                 $reader->read($innerBytes - 4);
                 continue;
             }
 
             if ($innerCtor === 0x9ec20908) {
-                // new_session_created
+                // new_session_created — read 3 longs, update salt
                 $reader->readLong(); $reader->readLong();
                 $this->salt = $reader->readLong();
                 continue;
@@ -223,10 +226,23 @@ class MTProtoSender
 
             if (UpdateParser::isUpdateConstructor($innerCtor)) {
                 try {
-                    return UpdateParser::parse($innerCtor, $reader);
+                    $parsed = UpdateParser::parse($innerCtor, $reader);
+                    if ($parsed !== null) {
+                        // Flatten multi already returned by UpdateParser
+                        if ($parsed['type'] === 'multi') {
+                            foreach ($parsed['updates'] as $sub) {
+                                $collected[] = $sub;
+                            }
+                        } else {
+                            $collected[] = $parsed;
+                        }
+                    }
                 } catch (\Exception $e) {
-                    continue;
+                    // Skip remaining payload for this item
+                    $skip = $innerBytes - 4;
+                    if ($skip > 0) { try { $reader->read($skip); } catch (\Exception $e2) { break; } }
                 }
+                continue;
             }
 
             // Unknown — skip
@@ -235,7 +251,10 @@ class MTProtoSender
                 try { $reader->read($skip); } catch (\Exception $e) { break; }
             }
         }
-        return null;
+
+        if (empty($collected)) return null;
+        if (count($collected) === 1) return $collected[0];
+        return ['type' => 'multi', 'updates' => $collected];
     }
 
     /**

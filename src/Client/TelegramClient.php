@@ -56,6 +56,7 @@ use XnoxsProto\TL\Types\InputMediaPoll;
 use XnoxsProto\TL\Types\User;
 use XnoxsProto\TL\Types\Chat;
 use XnoxsProto\TL\Functions\ChannelsGetParticipantsRequest;
+use XnoxsProto\TL\Functions\UpdatesGetStateRequest;
 use XnoxsProto\TL\Types\FullMessage;
 use XnoxsProto\TL\BinaryReader;
 use XnoxsProto\TL\Parser\TLSkipHelper;
@@ -408,14 +409,16 @@ class TelegramClient
             $this->connect();
         }
 
-        // ── Step 3: Sudah login? Selesai ─────────────────────────────────
+        // ── Step 3: Sudah login? Sync state lalu selesai ─────────────────
         if ($this->auth->isAuthorized()) {
+            $this->syncUpdateState();
             return;
         }
 
         // ── Step 4: Bot login ─────────────────────────────────────────────
         if (!empty($botToken)) {
             $this->auth->loginAsBot($botToken);
+            $this->syncUpdateState();
             return;
         }
 
@@ -452,6 +455,24 @@ class TelegramClient
             } else {
                 throw $e;
             }
+        }
+
+        // ── Step 8: Sync update state agar server mulai push update ──────
+        $this->syncUpdateState();
+    }
+
+    /**
+     * Panggil updates.getState agar server Telegram tahu client siap menerima update.
+     * Wajib dipanggil sekali setelah login — tanpa ini server tidak push update baru.
+     */
+    private function syncUpdateState(): void
+    {
+        try {
+            $req = new UpdatesGetStateRequest();
+            $req = $this->wrapFirstRequest($req);
+            $this->sender->send($req);
+        } catch (\Throwable) {
+            // Non-fatal — jika gagal, update mungkin tidak terkirim tapi tidak crash
         }
     }
 

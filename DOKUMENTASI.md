@@ -3008,8 +3008,9 @@ $result = $client->editChatAbout('@supergroup', ''); // kosongkan deskripsi
 // Basic group (gunakan chat_id integer)
 $result = $client->editChatAbout(123456789, 'Deskripsi basic group saya');
 
-echo $result['updated'];  // true
-echo $result['about'];    // deskripsi baru
+echo $result['updated'];   // true (1)
+echo $result['peer_id'];   // ID grup/channel yang diubah
+echo $result['about'];     // deskripsi baru yang sudah disimpan
 ```
 
 ---

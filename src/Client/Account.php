@@ -85,15 +85,13 @@ class Account
             throw new \InvalidArgumentException("File not found: $filePath");
         }
 
-        $uploader = new \XnoxsProto\Upload\FileUploader($this->client->getSender(), $this->client);
-        $uploaded = $uploader->upload($filePath, $onProgress);
+        $uploader = new \XnoxsProto\Upload\FileUploader($this->client);
+        if ($onProgress !== null) {
+            $uploader->onProgress($onProgress);
+        }
+        $uploaded = $uploader->upload($filePath);
 
-        $request = new PhotosUploadProfilePhotoRequest(
-            $uploaded->id,
-            $uploaded->parts,
-            $uploaded->name,
-            $uploaded->md5
-        );
+        $request = new PhotosUploadProfilePhotoRequest($uploaded);
         $request = $this->client->wrapFirstRequest($request);
 
         try {

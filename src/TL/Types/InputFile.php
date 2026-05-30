@@ -60,8 +60,9 @@ class InputFile
         }
     }
 
-    public function getName(): string  { return $this->name; }
-    public function getFileId(): int   { return $this->fileId; }
-    public function getParts(): int    { return $this->parts; }
-    public function isBig(): bool      { return $this->constructor === self::BIG; }
+    public function getName(): string        { return $this->name; }
+    public function getFileId(): int         { return $this->fileId; }
+    public function getParts(): int          { return $this->parts; }
+    public function getMd5Checksum(): string { return $this->md5Checksum; }
+    public function isBig(): bool            { return $this->constructor === self::BIG; }
 }

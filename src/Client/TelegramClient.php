@@ -2898,7 +2898,7 @@ class TelegramClient
                 try {
                     $u = User::fromReader($reader);
                     $users[$u->id] = $u;
-                } catch (\Throwable) { break; }
+                } catch (\Throwable) { continue; }
             }
         } catch (\Throwable) {}
 
@@ -3021,7 +3021,7 @@ class TelegramClient
                     try {
                         $u = User::fromReader($reader);
                         $users[$u->id] = $u;
-                    } catch (\Throwable $e) { break; }
+                    } catch (\Throwable $e) { continue; }
                 }
             } catch (\Throwable $e) {}
 

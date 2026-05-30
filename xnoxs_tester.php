@@ -195,6 +195,41 @@ function pilihChannel(TelegramClient $c, string $prompt = 'Pilih channel/supergr
     return $pick ? $pick['data'] : null;
 }
 
+/**
+ * Ambil anggota dari grup/channel yang sudah dipilih, lalu tampilkan untuk dipilih.
+ * Mendukung tipe 'chat' (getChatMembers) dan 'channel' (getChannelMembers).
+ */
+function pilihAnggotaDariGrup(TelegramClient $c, array $grup, string $prompt = 'Pilih anggota', int $limit = 50): ?array
+{
+    $tipe = $grup['type'] ?? '';
+    echo "  Mengambil daftar anggota...\n";
+    if ($tipe === 'channel') {
+        $members = coba(fn() => $c->getChannelMembers($grup['id'], $limit));
+    } elseif ($tipe === 'chat') {
+        $members = coba(fn() => $c->getChatMembers($grup['id']));
+    } else {
+        err("Tipe tidak dikenal: $tipe");
+        return null;
+    }
+    if (!$members) { info("Tidak bisa mengambil daftar anggota."); return null; }
+
+    // Normalisasi ke format seragam
+    $items = [];
+    foreach ($members as $m) {
+        $nama    = $m['display'] ?? (($m['first_name'] ?? '') . ' ' . ($m['last_name'] ?? ''));
+        $nama    = trim($nama) ?: 'User#' . ($m['id'] ?? $m['user_id'] ?? '?');
+        $uname   = !empty($m['username']) ? " (@{$m['username']})" : '';
+        $role    = isset($m['role']) ? ' [' . $m['role'] . ']' : '';
+        $uid     = $m['id'] ?? $m['user_id'] ?? null;
+        $items[] = [
+            'label' => $nama . $uname . $role,
+            'data'  => array_merge($m, ['id' => $uid]),
+        ];
+    }
+    $pick = pilihList($items, $prompt);
+    return $pick ? $pick['data'] : null;
+}
+
 /** Filter dialog hanya grup biasa (type='chat'). */
 function pilihGrup(TelegramClient $c, string $prompt = 'Pilih grup biasa'): ?array
 {
@@ -943,16 +978,16 @@ function menu_grup(TelegramClient $c): void
                 subjudul("Promosi Admin");
                 $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
-                $kontak = pilihKontak($c, "Pilih anggota yang akan dipromosi");
-                if (!$kontak) break;
-                $res = coba(fn() => $c->promoteAdmin($ch['id'], $kontak['id'],
+                $anggota = pilihAnggotaDariGrup($c, $ch, "Pilih anggota yang akan dipromosi");
+                if (!$anggota) break;
+                $res = coba(fn() => $c->promoteAdmin($ch['id'], $anggota['id'],
                     canChangeInfo:     true,
                     canDeleteMessages: true,
                     canBanUsers:       true,
                     canInviteUsers:    true,
                     canPinMessages:    true
                 ));
-                if ($res) ok("Admin dipromosi: " . ($kontak['display'] ?? '?'));
+                if ($res) ok("Admin dipromosi: " . ($anggota['display'] ?? $anggota['first_name'] ?? 'ID:' . $anggota['id']));
                 jeda();
                 break;
 
@@ -960,9 +995,9 @@ function menu_grup(TelegramClient $c): void
                 subjudul("Turunkan Admin");
                 $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
-                $kontak = pilihKontak($c, "Pilih admin yang akan diturunkan");
-                if (!$kontak) break;
-                $res = coba(fn() => $c->demoteAdmin($ch['id'], $kontak['id']));
+                $anggota = pilihAnggotaDariGrup($c, $ch, "Pilih admin yang akan diturunkan");
+                if (!$anggota) break;
+                $res = coba(fn() => $c->demoteAdmin($ch['id'], $anggota['id']));
                 if ($res) ok("Admin diturunkan.");
                 jeda();
                 break;
@@ -971,9 +1006,9 @@ function menu_grup(TelegramClient $c): void
                 subjudul("Ban Anggota");
                 $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
-                $kontak = pilihKontak($c, "Pilih anggota yang akan di-ban");
-                if (!$kontak) break;
-                $res = coba(fn() => $c->banUser($ch['id'], $kontak['id']));
+                $anggota = pilihAnggotaDariGrup($c, $ch, "Pilih anggota yang akan di-ban");
+                if (!$anggota) break;
+                $res = coba(fn() => $c->banUser($ch['id'], $anggota['id']));
                 if ($res) ok("Anggota di-ban.");
                 jeda();
                 break;
@@ -982,9 +1017,9 @@ function menu_grup(TelegramClient $c): void
                 subjudul("Unban Anggota");
                 $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
-                $kontak = pilihKontak($c, "Pilih anggota yang akan di-unban");
-                if (!$kontak) break;
-                $res = coba(fn() => $c->unbanUser($ch['id'], $kontak['id']));
+                $anggota = pilihAnggotaDariGrup($c, $ch, "Pilih anggota yang akan di-unban");
+                if (!$anggota) break;
+                $res = coba(fn() => $c->unbanUser($ch['id'], $anggota['id']));
                 if ($res) ok("Anggota di-unban.");
                 jeda();
                 break;
@@ -993,9 +1028,9 @@ function menu_grup(TelegramClient $c): void
                 subjudul("Kick Anggota");
                 $ch = pilihGrupAtauChannel($c, "Pilih grup/channel");
                 if (!$ch) break;
-                $kontak = pilihKontak($c, "Pilih anggota yang akan di-kick");
-                if (!$kontak) break;
-                $res = coba(fn() => $c->kickUser($ch['id'], $kontak['id']));
+                $anggota = pilihAnggotaDariGrup($c, $ch, "Pilih anggota yang akan di-kick");
+                if (!$anggota) break;
+                $res = coba(fn() => $c->kickUser($ch['id'], $anggota['id']));
                 if ($res) ok("Anggota di-kick.");
                 jeda();
                 break;

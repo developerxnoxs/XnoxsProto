@@ -1645,8 +1645,12 @@ $client->muteUser('@supergroup', '@user', 604800);     // 1 minggu
 Larang user mengirim semua jenis konten. Hanya berlaku untuk supergroup/channel.
 
 ```php
-$client->readOnlyUser('@supergroup', '@user');          // read-only selamanya
-$client->readOnlyUser('@supergroup', '@user', 86400);   // 1 hari
+$result = $client->readOnlyUser('@supergroup', '@user');          // read-only selamanya
+$result = $client->readOnlyUser('@supergroup', '@user', 86400);   // 1 hari
+
+// Returns:
+['restricted' => true, 'user_id' => 123456, 'until' => 'selamanya']
+['restricted' => true, 'user_id' => 123456, 'until' => '2026-06-01 10:00:00']
 ```
 
 ---
@@ -2992,8 +2996,9 @@ $result = $client->editChatTitle($chatId, 'Nama Baru Grup');        // basic gro
 $result = $client->editChatTitle('@channelku', 'Judul Baru');       // channel via username
 $result = $client->editChatTitle(-100123456789, 'Judul Baru');      // channel via ID Bot API
 
-echo $result['updated'];  // true
-echo $result['title'];    // 'Nama Baru Grup'
+echo $result['updated'];   // true
+echo $result['peer_id'];   // ID grup/channel yang diubah
+echo $result['title'];     // 'Nama Baru Grup'
 ```
 
 ---
@@ -3024,6 +3029,7 @@ $result = $client->addChatUser(123456789, '@username');
 $result = $client->addChatUser(123456789, 987654321, fwdLimit: 50);
 
 echo $result['added'];    // true
+echo $result['chat_id'];  // ID basic group
 echo $result['user_id'];  // ID user yang ditambahkan
 ```
 
@@ -3040,8 +3046,10 @@ $result = $client->toggleSlowMode('@supergroup', 30);
 // Nonaktifkan slow mode
 $result = $client->toggleSlowMode('@supergroup', 0);
 
-echo $result['slow_mode_enabled'];  // true / false
+echo $result['updated'];            // true
+echo $result['channel_id'];         // ID supergroup
 echo $result['slow_mode_seconds'];  // 30
+echo $result['slow_mode_enabled'];  // true / false
 ```
 
 **Nilai `$seconds` yang valid:** `0` (off), `10`, `30`, `60`, `300`, `900`, `3600`
@@ -3070,10 +3078,13 @@ $result = $client->exportInviteLink('@grupku',
     title:         'Link VIP'
 );
 
-echo $result['link'];           // URL link undangan
-echo $result['expire_date'];    // Unix timestamp kadaluarsa (null = selamanya)
-echo $result['usage_limit'];    // Batas pemakaian (null = unlimited)
-echo $result['request_needed']; // bool
+echo $result['link'];            // URL link undangan
+echo $result['revoked'];         // bool — true jika link lama di-revoke
+echo $result['expire_date'];     // Unix timestamp kadaluarsa (null = selamanya)
+echo $result['usage_limit'];     // Batas pemakaian (null = unlimited)
+echo $result['request_needed'];  // bool — perlu persetujuan admin
+echo $result['title'];           // Label link (kosong jika tidak diset)
+echo $result['peer_id'];         // ID peer
 ```
 
 ---
@@ -3091,6 +3102,7 @@ $result = $client->setDefaultPermissions(
 $result = $client->setDefaultPermissions('@supergroup', 0);
 
 echo $result['updated'];        // true
+echo $result['peer_id'];        // ID grup/supergroup
 echo $result['banned_rights'];  // bitmask flag yang dilarang
 ```
 
@@ -3100,10 +3112,12 @@ echo $result['banned_rights'];  // bitmask flag yang dilarang
 
 ```php
 // Aktifkan: setiap postingan tampilkan nama admin yang memposting
-$client->toggleSignatures('@channelku', true);
+$result = $client->toggleSignatures('@channelku', true);
 
 // Nonaktifkan: postingan atas nama channel (anonim)
-$client->toggleSignatures('@channelku', false);
+$result = $client->toggleSignatures('@channelku', false);
+
+// Returns: ['updated' => true, 'channel_id' => int, 'signatures_enabled' => bool]
 ```
 
 > Hanya berlaku untuk **channel broadcast**. Supergroup tidak mendukung fitur ini.
@@ -3113,8 +3127,10 @@ $client->toggleSignatures('@channelku', false);
 ### 32.12 Wajib Join Sebelum Kirim Pesan
 
 ```php
-$client->toggleJoinToSend('@supergroup', true);  // wajib join dulu
-$client->toggleJoinToSend('@supergroup', false); // tidak wajib
+$result = $client->toggleJoinToSend('@supergroup', true);  // wajib join dulu
+$result = $client->toggleJoinToSend('@supergroup', false); // tidak wajib
+
+// Returns: ['updated' => true, 'channel_id' => int, 'join_to_send' => bool]
 ```
 
 > **Syarat:** `toggleJoinToSend` hanya bisa diaktifkan pada supergroup yang sudah **di-link ke sebuah broadcast channel** sebagai discussion group-nya. Supergroup standalone akan menghasilkan error: `[400] DISCUSSION_CHAT_REQUIRED`.
@@ -3124,8 +3140,10 @@ $client->toggleJoinToSend('@supergroup', false); // tidak wajib
 ### 32.13 Wajib Persetujuan Admin untuk Join
 
 ```php
-$client->toggleJoinRequest('@supergroup_publik', true);  // perlu persetujuan
-$client->toggleJoinRequest('@supergroup_publik', false); // langsung join
+$result = $client->toggleJoinRequest('@supergroup_publik', true);  // perlu persetujuan
+$result = $client->toggleJoinRequest('@supergroup_publik', false); // langsung join
+
+// Returns: ['updated' => true, 'channel_id' => int, 'join_request' => bool]
 ```
 
 > **Syarat:** Hanya berlaku pada channel/supergroup yang sudah **berstatus publik** (memiliki username). Pada yang privat akan muncul error `[400] CHAT_PUBLIC_REQUIRED`.

@@ -123,12 +123,14 @@ $client->onUpdate(function (RawUpdateEvent $event) use ($client, &$pendingClick)
             printButtons($rows);
             $pendingClick = $msg;
 
-            // Otomatis klik tombol pertama (row=0, col=0) jika berupa callback
+            // Otomatis klik tombol pertama jika berupa callback
+            // Menggunakan label teks — tidak perlu tahu posisi array
             $firstBtn = $rows[0][0] ?? null;
             if ($firstBtn !== null && ($firstBtn['type'] ?? '') === 'callback') {
-                echo "  [AUTO] Mengklik tombol pertama: \"{$firstBtn['text']}\"\n";
+                $label = $firstBtn['text'];
+                echo "  [AUTO] Mengklik tombol: \"{$label}\"\n";
                 try {
-                    $resp = $msg->click(0, 0);
+                    $resp = $msg->click($label);
                     if (!empty($resp)) {
                         echo "  [CALLBACK] Respons: " . json_encode($resp, JSON_UNESCAPED_UNICODE) . "\n";
                     } else {

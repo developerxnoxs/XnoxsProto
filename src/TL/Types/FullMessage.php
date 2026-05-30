@@ -345,11 +345,16 @@ class FullMessage
     }
 
     /**
-     * Click inline keyboard button at position [$row][$col].
+     * Klik tombol inline keyboard.
      *
-     * PHP equivalent of Telethon's: await message.click(row, col)
+     * Cara pemakaian:
+     *   $msg->click(0, 0)          — posisi baris 0, kolom 0 (lama)
+     *   $msg->click('📖 Bantuan')  — cari tombol berdasarkan teks label (exact)
+     *   $msg->click('Bantuan')     — cari tombol yang mengandung teks ini (case-insensitive)
+     *
+     * Jika ditemukan lebih dari satu cocok parsial, tombol pertama yang ditemukan diklik.
      */
-    public function click(int $row = 0, int $col = 0): ?array
+    public function click(int|string $row = 0, int $col = 0): ?array
     {
         if ($this->client === null) {
             throw new \RuntimeException('No client attached — call setClient() first or use event handler');
@@ -357,12 +362,48 @@ class FullMessage
         if ($this->replyMarkup === null || empty($this->replyMarkup['rows'])) {
             throw new \RuntimeException('Message has no reply markup / inline keyboard');
         }
-        $rows = $this->replyMarkup['rows'];
-        if (!isset($rows[$row][$col])) {
-            throw new \RuntimeException("No button at row=$row col=$col");
+
+        $rows   = $this->replyMarkup['rows'];
+        $button = null;
+
+        if (is_string($row)) {
+            // Cari tombol berdasarkan teks label
+            $needle = $row;
+
+            // 1. Coba exact match dulu
+            foreach ($rows as $r) {
+                foreach ($r as $btn) {
+                    if (($btn['text'] ?? '') === $needle) {
+                        $button = $btn;
+                        break 2;
+                    }
+                }
+            }
+
+            // 2. Fallback: partial/case-insensitive match
+            if ($button === null) {
+                $needleLower = mb_strtolower($needle);
+                foreach ($rows as $r) {
+                    foreach ($r as $btn) {
+                        if (mb_strpos(mb_strtolower($btn['text'] ?? ''), $needleLower) !== false) {
+                            $button = $btn;
+                            break 2;
+                        }
+                    }
+                }
+            }
+
+            if ($button === null) {
+                throw new \RuntimeException("Tombol dengan teks \"{$needle}\" tidak ditemukan");
+            }
+        } else {
+            // Mode lama: posisi angka row, col
+            if (!isset($rows[$row][$col])) {
+                throw new \RuntimeException("Tidak ada tombol di row=$row col=$col");
+            }
+            $button = $rows[$row][$col];
         }
 
-        $button = $rows[$row][$col];
         $data   = $button['data'] ?? null;
         $isGame = $button['type'] === 'game';
 

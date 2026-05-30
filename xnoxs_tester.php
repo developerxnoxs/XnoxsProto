@@ -97,7 +97,7 @@ function pilihList(array $items, string $prompt = 'Pilih nomor'): ?array
 function pilihDialog(TelegramClient $c, string $prompt = 'Pilih chat'): ?array
 {
     echo "  Mengambil dialog...\n";
-    $dialogs = coba(fn() => $c->getDialogs(80));
+    $dialogs = coba(fn() => $c->getDialogs(100));
     if (!$dialogs) return null;
     $items = array_map(fn($d) => [
         'label' => sprintf("%-30s %s",

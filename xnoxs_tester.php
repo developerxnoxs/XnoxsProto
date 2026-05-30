@@ -562,9 +562,9 @@ function menu_akun(TelegramClient $c, string $sessionsDir, string $activeSession
                 echo "  Aturan: [1] Semua orang  [2] Kontak saja  [3] Tidak ada\n";
                 $r = inp("  Pilih aturan: ");
                 $rules = match($r) {
-                    '1' => ['allow_all'       => true],
-                    '2' => ['allow_contacts'  => true],
-                    '3' => ['disallow_all'    => true],
+                    '1' => ['allow_all'],
+                    '2' => ['allow_contacts'],
+                    '3' => ['disallow_all'],
                     default => null,
                 };
                 if ($rules) {

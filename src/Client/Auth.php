@@ -400,7 +400,16 @@ class Auth
                 $newDc    = $tokenInfo['migrate_to']['dc_id'];
                 $newToken = $tokenInfo['migrate_to']['token'];
                 $this->client->connect($newDc, true);
-                $imported = $this->importLoginToken($newToken);
+                try {
+                    $imported = $this->importLoginToken($newToken);
+                } catch (\XnoxsProto\Exceptions\RPCException $e) {
+                    if ($e->errorMessage === 'SESSION_PASSWORD_NEEDED') {
+                        $authorization = $this->performQR2FA($passwordCallback);
+                        $this->handleQRAuthorization($authorization, null);
+                        return $this->buildUserArray($authorization);
+                    }
+                    throw $e;
+                }
                 if (isset($imported['authorized']) && $imported['authorized']) {
                     $this->handleQRAuthorization($imported['authorization'], $passwordCallback);
                     return $this->buildUserArray($imported['authorization']);
@@ -438,9 +447,14 @@ class Auth
                 try {
                     $check = $this->exportLoginToken();
                 } catch (\XnoxsProto\Exceptions\RPCException $e) {
-                    // AUTH_TOKEN_EXPIRED is expected — just re-loop for a new QR
                     if (str_contains($e->errorMessage, 'AUTH_TOKEN_EXPIRED')) {
-                        break;
+                        break; // re-loop for a new QR
+                    }
+                    if ($e->errorMessage === 'SESSION_PASSWORD_NEEDED') {
+                        // QR scanned — account has 2FA, complete with cloud password
+                        $authorization = $this->performQR2FA($passwordCallback);
+                        $this->handleQRAuthorization($authorization, null);
+                        return $this->buildUserArray($authorization);
                     }
                     throw $e;
                 }
@@ -455,7 +469,16 @@ class Auth
                     $newDc    = $check['migrate_to']['dc_id'];
                     $newToken = $check['migrate_to']['token'];
                     $this->client->connect($newDc, true);
-                    $imported = $this->importLoginToken($newToken);
+                    try {
+                        $imported = $this->importLoginToken($newToken);
+                    } catch (\XnoxsProto\Exceptions\RPCException $e) {
+                        if ($e->errorMessage === 'SESSION_PASSWORD_NEEDED') {
+                            $authorization = $this->performQR2FA($passwordCallback);
+                            $this->handleQRAuthorization($authorization, null);
+                            return $this->buildUserArray($authorization);
+                        }
+                        throw $e;
+                    }
                     if (isset($imported['authorized']) && $imported['authorized']) {
                         $this->handleQRAuthorization($imported['authorization'], $passwordCallback);
                         return $this->buildUserArray($imported['authorization']);
@@ -531,6 +554,86 @@ class Auth
                     $ctor
                 ));
         }
+    }
+
+    /**
+     * Complete a QR login that triggered SESSION_PASSWORD_NEEDED (2FA).
+     *
+     * Fetches SRP parameters, obtains the cloud password from the callback
+     * (or prompts STDIN), computes the SRP proof, and calls auth.checkPassword.
+     * Returns the AuthAuthorization on success.
+     *
+     * @param callable|null $passwordCallback  Signature: function(): string
+     */
+    private function performQR2FA(?callable $passwordCallback): AuthAuthorization
+    {
+        $sender = $this->client->getSender();
+
+        // Step 1: Fetch SRP parameters (also contains the password hint)
+        $pwdRequest  = new AccountGetPasswordRequest();
+        $pwdRequest  = $this->client->wrapFirstRequest($pwdRequest);
+        $pwdResponse = $sender->send($pwdRequest);
+        $srpParams   = $this->parseAccountPassword($pwdResponse);
+
+        if (!$srpParams['has_password']) {
+            throw new \RuntimeException(
+                'SERVER_ERROR: SESSION_PASSWORD_NEEDED tapi akun tidak punya cloud password.'
+            );
+        }
+
+        // Step 2: Obtain the password from the caller or from STDIN
+        if ($passwordCallback !== null) {
+            $password = (string)$passwordCallback();
+        } else {
+            $hint = $srpParams['hint'] ?? '';
+            echo "\n";
+            if ($hint !== '') {
+                echo "🔐  Cloud password hint: {$hint}\n";
+            }
+            echo "🔐  Akun memiliki verifikasi 2 langkah. Masukkan cloud password: ";
+            if (function_exists('readline')) {
+                $password = (string)readline('');
+            } else {
+                $password = trim((string)fgets(STDIN));
+            }
+            echo "\n";
+        }
+
+        // Step 3: Compute SRP proof
+        $proof = SRP::computeCheck(
+            $password,
+            $srpParams['salt1'],
+            $srpParams['salt2'],
+            $srpParams['g'],
+            $srpParams['p'],
+            $srpParams['srp_B'],
+            $srpParams['srp_id']
+        );
+
+        // Step 4: Send auth.checkPassword
+        $request = new AuthCheckPasswordRequest(
+            $proof['srp_id'],
+            $proof['A'],
+            $proof['M1']
+        );
+
+        try {
+            $response = $sender->send($request);
+        } catch (\XnoxsProto\Exceptions\RPCException $e) {
+            if (str_contains($e->errorMessage, 'PASSWORD_HASH_INVALID')) {
+                throw new \RuntimeException('Kata sandi 2FA salah. Periksa kembali dan coba lagi.', 400, $e);
+            }
+            throw $e;
+        }
+
+        if ($response['constructor'] !== AuthAuthorization::CONSTRUCTOR_ID) {
+            throw new \RuntimeException(sprintf(
+                'Unexpected constructor from auth.checkPassword: 0x%08x',
+                $response['constructor']
+            ));
+        }
+
+        return AuthAuthorization::fromReader($response['reader']);
     }
 
     /**

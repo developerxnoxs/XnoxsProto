@@ -543,6 +543,20 @@ class Auth
     ): void {
         $this->client->getSession()->setAuthorized(true, $authorization->user->id ?? null);
 
+        // Cache the self user into the session entity store so that subsequent
+        // calls (e.g. getDialogs) can resolve the user's own DM by name even
+        // on a fresh session that has no prior entity cache (QR always starts fresh).
+        $user = $authorization->user;
+        if ($user && $user->id) {
+            $row = ['id' => $user->id, 'type' => 'user', 'bot' => false];
+            if ($user->accessHash !== null) $row['access_hash'] = $user->accessHash;
+            if ($user->firstName  !== null) $row['first_name']  = $user->firstName;
+            if ($user->lastName   !== null) $row['last_name']   = $user->lastName;
+            if ($user->username   !== null) $row['username']    = $user->username;
+            if ($user->phone      !== null) $row['phone']       = $user->phone;
+            $this->client->getSession()->processEntities([$row]);
+        }
+
         // If the account requires cloud password setup (rare after QR scan),
         // let it pass — the caller can check getPasswordInfo() separately.
         // Standard 2FA verification is not needed for QR-based sessions because

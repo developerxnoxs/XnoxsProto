@@ -373,15 +373,19 @@ class TLSkipHelper
     }
 
     // =========================================================================
-    // SuggestedPost — new type, skip it
-    // suggestedPost#something flags:# ...
-    // (constructor and fields TBD, just try to read conservatively)
+    // SuggestedPost — suggestedPost#2f3a1b62
+    // flags:#  schedule_date:flags.0?int  price:flags.1?StarsAmount
+    // rejected:flags.2?true  accepted:flags.3?true  admin_signature:flags.4?true
+    // reject_reason:flags.5?string
     // =========================================================================
     private static function skipSuggestedPost(BinaryReader $r): void
     {
-        // SuggestedPost is a new type. For now, we skip it as unknown.
-        // In practice, this field is rarely present in contacts.
-        // We'll handle this properly if getDialogs is implemented.
+        $r->readInt();  // constructor
+        $flags = $r->readInt();
+        if ($flags & (1 << 0)) $r->readInt();             // schedule_date
+        if ($flags & (1 << 1)) self::skipStarsAmount($r); // price
+        // bits 2,3,4 are ?true — no extra bytes
+        if ($flags & (1 << 5)) $r->readString();          // reject_reason
     }
 
     // =========================================================================
@@ -1037,7 +1041,7 @@ class TLSkipHelper
                 return ['type' => 'invoice'];
 
             default:
-                return ['type' => sprintf('unknown_0x%08x', $c)];
+                throw new \RuntimeException(sprintf('Unknown MessageMedia constructor: 0x%08x', $c));
         }
     }
 

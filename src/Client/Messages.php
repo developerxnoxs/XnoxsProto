@@ -271,6 +271,34 @@ class Messages
             }
         }
 
+        // --- 4b. Fallback entity fetch ketika message-stream korup ($dialogsOk = false) ---
+        // Jika parsing messages/chats/users gagal (stream rusak karena constructor tak dikenal),
+        // coba ambil entity data langsung via API menggunakan peer ID dari rawDialogs.
+        // Tanpa ini, sesi QR baru yang belum punya cache akan menampilkan Channel#ID, Chat#ID, User#ID.
+        if (!$dialogsOk && !empty($rawDialogs)) {
+            $chatIds   = [];
+            $userSpecs = [];
+            foreach ($rawDialogs as $d) {
+                if ($d->peerType === 'chat')    $chatIds[]   = $d->peerId;
+                if ($d->peerType === 'user')    $userSpecs[] = ['id' => $d->peerId, 'access_hash' => null];
+                // channel: memerlukan access_hash — tidak bisa diambil tanpa parsing chats vector
+            }
+            if (!empty($chatIds)) {
+                try {
+                    foreach ($this->fetchChatsByIds($chatIds) as $id => $chat) {
+                        $chats[$id] = $chat;
+                    }
+                } catch (\Throwable) {}
+            }
+            if (!empty($userSpecs)) {
+                try {
+                    foreach ($this->batchFetchUsers($userSpecs) as $id => $user) {
+                        $users[$id] = $user;
+                    }
+                } catch (\Throwable) {}
+            }
+        }
+
         // --- 5. Cache parsed entities ke session (Telethon: _mb_entity_cache.extend) ---
         // Simpan untuk fallback min-user & access_hash recovery di session berikutnya
         $toCache = [];

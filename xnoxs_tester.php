@@ -86,9 +86,20 @@ function mi(string $n, string $label, bool $back = false): void
  * Tampilkan pesan dalam gaya bubble terminal.
  * Pesan keluar (isMine=true) rata kanan, pesan masuk rata kiri.
  */
-function cetakBubble(string $teks, string $from, string $time, bool $isMine, int $termW = 60): void
+function getTermWidth(): int
 {
-    $MAX_TEXT = 36;
+    static $w = null;
+    if ($w === null) {
+        $cols = (int)(trim(shell_exec('tput cols 2>/dev/null') ?: '0'));
+        $w = ($cols >= 40) ? $cols : 80;
+    }
+    return $w;
+}
+
+function cetakBubble(string $teks, string $from, string $time, bool $isMine): void
+{
+    $termW    = getTermWidth();
+    $MAX_TEXT = min(48, (int)($termW * 0.55)); // max ~55% lebar terminal
     $lines    = explode("\n", wordwrap($teks, $MAX_TEXT, "\n", true));
 
     $textW   = 0;
@@ -101,8 +112,8 @@ function cetakBubble(string $teks, string $from, string $time, bool $isMine, int
     $dashLen = max(1, $bW - 5 - $timeLen);
 
     if ($isMine) {
-        $indent = max(0, ($termW - 2) - $bW);
-        $L = '  ' . str_repeat(' ', $indent);
+        $indent = max(0, $termW - $bW - 1);
+        $L = str_repeat(' ', $indent);
 
         echo $L . C_GREEN . '╭' . str_repeat('─', $bW - 2) . '╮' . C_RESET . "\n";
         foreach ($lines as $l) {

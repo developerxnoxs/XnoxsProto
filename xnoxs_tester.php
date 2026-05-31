@@ -96,7 +96,7 @@ function getTermWidth(): int
     return $w;
 }
 
-function cetakBubble(string $teks, string $from, string $time, bool $isMine): void
+function cetakBubble(string $teks, string $from, string $time, bool $isMine, array $reactions = []): void
 {
     $termW    = getTermWidth();
     $MAX_TEXT = min(48, (int)($termW * 0.55)); // max ~55% lebar terminal
@@ -111,6 +111,22 @@ function cetakBubble(string $teks, string $from, string $time, bool $isMine): vo
     $bW      = $textW + 4;             // │ space text space │
     $dashLen = max(1, $bW - 5 - $timeLen);
 
+    // Format baris reaksi
+    $rxnLine = '';
+    if (!empty($reactions)) {
+        $parts = [];
+        foreach ($reactions as $rxn) {
+            $emoji = $rxn['emoji'] ?? '';
+            $cnt   = (int)($rxn['count'] ?? 1);
+            $mine  = !empty($rxn['chosen']);
+            $s     = $emoji;
+            if ($cnt > 1) $s .= ' ' . $cnt;
+            if ($mine)    $s .= '✓';
+            $parts[] = $s;
+        }
+        $rxnLine = implode('   ', $parts);
+    }
+
     if ($isMine) {
         $indent = max(0, $termW - $bW - 1);
         $L = str_repeat(' ', $indent);
@@ -120,7 +136,10 @@ function cetakBubble(string $teks, string $from, string $time, bool $isMine): vo
             $fill = str_repeat(' ', $textW - mb_strlen($l));
             echo $L . C_GREEN . '│' . C_RESET . ' ' . $l . $fill . ' ' . C_GREEN . '│' . C_RESET . "\n";
         }
-        echo $L . C_GREEN . '╰' . str_repeat('─', $dashLen) . ' ' . C_GRAY . $time . C_GREEN . ' ─╯' . C_RESET . "\n\n";
+        echo $L . C_GREEN . '╰' . str_repeat('─', $dashLen) . ' ' . C_GRAY . $time . C_GREEN . ' ─╯' . C_RESET . "\n";
+        if ($rxnLine !== '') {
+            echo $L . C_GRAY . $rxnLine . C_RESET . "\n";
+        }
     } else {
         $L = '  ';
 
@@ -130,8 +149,12 @@ function cetakBubble(string $teks, string $from, string $time, bool $isMine): vo
             $fill = str_repeat(' ', $textW - mb_strlen($l));
             echo $L . C_CYAN . '│' . C_RESET . ' ' . $l . $fill . ' ' . C_CYAN . '│' . C_RESET . "\n";
         }
-        echo $L . C_CYAN . '╰─ ' . C_GRAY . $time . C_CYAN . ' ' . str_repeat('─', $dashLen) . '╯' . C_RESET . "\n\n";
+        echo $L . C_CYAN . '╰─ ' . C_GRAY . $time . C_CYAN . ' ' . str_repeat('─', $dashLen) . '╯' . C_RESET . "\n";
+        if ($rxnLine !== '') {
+            echo $L . C_GRAY . $rxnLine . C_RESET . "\n";
+        }
     }
+    echo "\n";
 }
 
 function coba(callable $fn): mixed
@@ -760,6 +783,7 @@ function menu_pesan(TelegramClient $c): void
         mi('8',  'Pin pesan');
         mi('9',  'Unpin pesan');
         mi('10', 'Kirim polling');
+        mi('11', 'Kirim / hapus reaksi');
         echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
         mi('0',  'Kembali', true);
         echo "\n";
@@ -787,12 +811,13 @@ function menu_pesan(TelegramClient $c): void
                     $peerName = $dialog['title'] ?? $dialog['display'] ?? 'Lawan bicara';
                     echo "\n";
                     foreach (array_reverse($msgs) as $m) {
-                        $isMine = !empty($m['out']);
-                        $from   = $m['from_name'] ?? ($isMine ? 'Saya' : $peerName);
-                        $teks   = $m['text'] ?? ('[' . ($m['media']['type'] ?? 'service') . ']');
-                        $rawDate = $m['date'] ?? '';
-                        $time   = is_numeric($rawDate) ? date('H:i', (int)$rawDate) : (strlen($rawDate) >= 16 ? substr($rawDate, 11, 5) : '--:--');
-                        cetakBubble($teks, $from, $time, $isMine);
+                        $isMine   = !empty($m['out']);
+                        $from     = $m['from'] ?? $m['from_name'] ?? ($isMine ? 'Saya' : $peerName);
+                        $teks     = $m['text'] ?? ('[' . ($m['media']['type'] ?? 'service') . ']');
+                        $rawDate  = $m['date'] ?? '';
+                        $time     = is_numeric($rawDate) ? date('H:i', (int)$rawDate) : (strlen($rawDate) >= 16 ? substr($rawDate, 11, 5) : '--:--');
+                        $rxn      = $m['reactions'] ?? [];
+                        cetakBubble($teks, $from, $time, $isMine, $rxn);
                     }
                     info("Total: " . count($msgs) . " pesan.");
                 }
@@ -914,6 +939,24 @@ function menu_pesan(TelegramClient $c): void
                 }
                 $res = coba(fn() => $c->sendPoll($dialog['id'], $pertanyaan, $opsi, $kuis, $correctIdx));
                 if ($res) ok("Polling terkirim. ID=" . ($res['id'] ?? '?'));
+                jeda();
+                break;
+
+            case '11': // ── Reaksi
+                subjudul("Kirim / Hapus Reaksi");
+                $dialog = pilihDialog($c, "Pilih chat");
+                if (!$dialog) break;
+                $msg = pilihPesan($c, $dialog['id'], 15, "Pilih pesan yang akan direaksi");
+                if (!$msg) break;
+                echo "  Ketik emoji reaksi, atau kosongkan untuk HAPUS semua reaksi:\n";
+                $emojiInput = inp("  Emoji: ");
+                if ($emojiInput === '') {
+                    $res = coba(fn() => $c->sendReaction($dialog['id'], $msg['id'], []));
+                    if ($res) ok("Reaksi dihapus dari pesan #{$msg['id']}.");
+                } else {
+                    $res = coba(fn() => $c->sendReaction($dialog['id'], $msg['id'], [['type' => 'emoji', 'emoticon' => trim($emojiInput)]]));
+                    if ($res) ok("Reaksi $emojiInput dikirim ke pesan #{$msg['id']}.");
+                }
                 jeda();
                 break;
 
@@ -1553,10 +1596,11 @@ function chat_realtime(TelegramClient $c): void
     if ($history) {
         foreach (array_reverse($history) as $msg) {
             $isMine = !empty($msg['out']);
-            $from   = $msg['from_name'] ?? ($isMine ? 'Saya' : $namaPeer);
+            $from   = $msg['from'] ?? $msg['from_name'] ?? ($isMine ? 'Saya' : $namaPeer);
             $teks   = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
             $time   = !empty($msg['date']) ? date('H:i', (int)$msg['date']) : '--:--';
-            cetakBubble($teks, $from, $time, $isMine);
+            $rxn    = $msg['reactions'] ?? [];
+            cetakBubble($teks, $from, $time, $isMine, $rxn);
         }
     } else {
         info("Tidak ada riwayat pesan.");
@@ -1566,8 +1610,10 @@ function chat_realtime(TelegramClient $c): void
     echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
     echo "  " . C_BOLD . C_WHITE . "Chat:" . C_RESET . " " . C_CYAN . $namaPeer . C_RESET
        . C_GRAY . "  |  Perintah:" . C_RESET . "\n";
-    echo C_GRAY . "  /r [teks]" . C_RESET . "   — balas pesan terakhir yang diterima\n";
-    echo C_GRAY . "  /quit    " . C_RESET . "   — keluar dari mode chat\n";
+    echo C_GRAY . "  /r [teks]         " . C_RESET . "— balas pesan terakhir yang diterima\n";
+    echo C_GRAY . "  /react [emoji]    " . C_RESET . "— reaksi ke pesan terakhir yang diterima\n";
+    echo C_GRAY . "  /unreact          " . C_RESET . "— hapus reaksi dari pesan terakhir\n";
+    echo C_GRAY . "  /quit             " . C_RESET . "— keluar dari mode chat\n";
     echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n\n";
 
     // 3. Daftarkan event handler untuk pesan masuk
@@ -1615,7 +1661,7 @@ function chat_realtime(TelegramClient $c): void
             $typingUntil   = 0;
         }
 
-        cetakBubble($teks, $from, $time, false);
+        cetakBubble($teks, $from, $time, false, $msg->reactions ?? []);
 
         $lastMsgId   = $msg->id;
         $lastMsgFrom = $from;
@@ -1624,13 +1670,38 @@ function chat_realtime(TelegramClient $c): void
         flush();
     });
 
-    // Handler typing indicator — menerima semua raw update, filter per peer
+    // Handler raw update: typing indicator + reaction update
     $c->onUpdate(function ($event) use (
         $c, $peerId, $tipePeer, &$inputBuffer,
         &$typingMsg, &$typingUntil, &$typingVisible
     ) {
-        if ($event->type !== 'typing') return;
         $data = $event->data;
+
+        // ── reaction_update ──────────────────────────────────────────────
+        if ($event->type === 'reaction_update') {
+            $peer      = $data['peer']      ?? [];
+            $msgId     = $data['msg_id']    ?? 0;
+            $reactions = $data['reactions'] ?? [];
+
+            if (!empty($reactions)) {
+                $rxnStr = implode('  ', array_map(fn($r) =>
+                    ($r['emoji'] ?? '') .
+                    (($r['count'] ?? 1) > 1 ? ' ' . $r['count'] : '') .
+                    (!empty($r['chosen']) ? '✓' : ''),
+                    $reactions
+                ));
+                // Hapus prompt, cetak notif, restore prompt
+                echo "\r\033[K";
+                if ($typingVisible) { echo "\033[A\r\033[K"; $typingVisible = false; }
+                echo "  " . C_GRAY . "⚡ Reaksi pada #$msgId: " . C_RESET . $rxnStr . "\n";
+                echo C_GRAY . "  » " . C_RESET . $inputBuffer;
+                flush();
+            }
+            return;
+        }
+
+        // ── typing indicator ─────────────────────────────────────────────
+        if ($event->type !== 'typing') return;
 
         // Filter: hanya tampilkan typing dari peer yang sedang dibuka
         $isOurPeer = false;
@@ -1659,8 +1730,8 @@ function chat_realtime(TelegramClient $c): void
         }
 
         if (!$isCancelled) {
-            $userId   = $data['user_id'] ?? 0;
-            $nama     = ($userId ? ($c->getPeerName($userId) ?? null) : null) ?? 'Seseorang';
+            $userId      = $data['user_id'] ?? 0;
+            $nama        = ($userId ? ($c->getPeerName($userId) ?? null) : null) ?? 'Seseorang';
             $typingMsg   = "$nama $action...";
             $typingUntil = time() + 6;
             echo C_GRAY . "  ✎ " . $typingMsg . C_RESET . "\n";
@@ -1721,6 +1792,36 @@ function chat_realtime(TelegramClient $c): void
             }
 
             if ($input === '') {
+                echo C_GRAY . "  » " . C_RESET;
+                flush();
+                continue;
+            }
+
+            // Perintah /react [emoji] — reaksi ke pesan terakhir
+            if (preg_match('/^\/react\s*(.+)?$/su', $input, $m)) {
+                $emoji = trim($m[1] ?? '');
+                if ($lastMsgId === null) {
+                    err("Belum ada pesan yang diterima.");
+                } elseif ($emoji === '') {
+                    err("Ketik emoji setelah /react, misalnya: /react 👍");
+                } else {
+                    $rxnList = [['type' => 'emoji', 'emoticon' => $emoji]];
+                    $res = coba(fn() => $c->sendReaction($inputPeer, $lastMsgId, $rxnList));
+                    if ($res) ok("Reaksi $emoji dikirim ke pesan #{$lastMsgId}.");
+                }
+                echo C_GRAY . "  » " . C_RESET;
+                flush();
+                continue;
+            }
+
+            // Perintah /unreact — hapus semua reaksi dari pesan terakhir
+            if ($input === '/unreact') {
+                if ($lastMsgId === null) {
+                    err("Belum ada pesan yang diterima.");
+                } else {
+                    $res = coba(fn() => $c->sendReaction($inputPeer, $lastMsgId, []));
+                    if ($res) ok("Reaksi dihapus dari pesan #{$lastMsgId}.");
+                }
                 echo C_GRAY . "  » " . C_RESET;
                 flush();
                 continue;

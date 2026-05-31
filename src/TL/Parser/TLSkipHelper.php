@@ -1270,18 +1270,50 @@ class TLSkipHelper
 
     // =========================================================================
     // MessageReactions#4f2b9479
-    // flags:# min:f.0?true can_see_list:f.2?true
+    // flags:# min:f.0?true can_see_list:f.2?true reactions_as_tags:f.3?true
     //   results:Vector<ReactionCount>
     //   recent_reactions:f.1?Vector<MessagePeerReaction>
     // =========================================================================
+
+    /**
+     * Parse MessageReactions dan kembalikan array reaksi:
+     *   [['emoji'=>'👍','count'=>3,'chosen'=>false], ...]
+     *
+     * 'chosen' = true jika reaksi ini dipilih oleh akun kita sendiri.
+     */
+    public static function parseMessageReactions(BinaryReader $r): array
+    {
+        $r->readInt();           // konstruktor MessageReactions (0x4f2b9479)
+        $flags = $r->readInt();  // flags:#
+
+        // results:Vector<ReactionCount>
+        $r->readInt(); // vector constructor
+        $count = $r->readInt();
+        $reactions = [];
+        for ($i = 0; $i < $count; $i++) {
+            $r->readInt();           // ReactionCount constructor
+            $rcFlags  = $r->readInt();
+            $chosen   = (bool)($rcFlags & (1 << 0)); // chosen_order present → milik kita
+            if ($rcFlags & (1 << 0)) $r->readInt();   // chosen_order:f.0?int
+            $emoji = self::readReactionAsString($r);
+            $cnt   = $r->readInt();
+            if ($emoji !== '') {
+                $reactions[] = ['emoji' => $emoji, 'count' => $cnt, 'chosen' => $chosen];
+            }
+        }
+
+        // recent_reactions:flags.1?Vector<MessagePeerReaction>
+        if ($flags & (1 << 1)) {
+            self::skipVector($r, fn($x) => self::skipMessagePeerReaction($x));
+        }
+
+        return $reactions;
+    }
+
+    /** Wrapper skip — delegate ke parseMessageReactions dan buang hasilnya. */
     public static function skipMessageReactions(BinaryReader $r): void
     {
-        $r->readInt(); // constructor
-        $flags = $r->readInt();
-        // results:Vector<ReactionCount>
-        self::skipVector($r, fn($x) => self::skipReactionCount($x));
-        // recent_reactions:flags.1?Vector<MessagePeerReaction>
-        if ($flags & (1 << 1)) self::skipVector($r, fn($x) => self::skipMessagePeerReaction($x));
+        self::parseMessageReactions($r);
     }
 
     // ReactionCount#a3d1cb80 flags:# chosen_order:f.0?int reaction:Reaction count:int
@@ -1299,11 +1331,30 @@ class TLSkipHelper
     {
         $c = $r->readInt();
         switch ($c) {
-            case 0x79f5d419: break;           // reactionEmpty
-            case 0x1b2286b8: $r->readString(); break; // reactionEmoji — emoticon
-            case 0x8935fc73: $r->readLong(); break;   // reactionCustomEmoji — document_id
-            case 0x95d2ac92: break;           // reactionPaid
+            case 0x79f5d419: break;                    // reactionEmpty
+            case 0x1b2286b8: $r->readString(); break;  // reactionEmoji — emoticon
+            case 0x8935fc73: $r->readLong();   break;  // reactionCustomEmoji — document_id
+            case 0x95d2ac92: break;                    // reactionPaid
             default: break;
+        }
+    }
+
+    /**
+     * Baca satu Reaction dan kembalikan representasi string-nya.
+     * reactionEmpty → ''
+     * reactionEmoji → emoticon string (e.g. '👍')
+     * reactionCustomEmoji → '🎨' (placeholder)
+     * reactionPaid → '⭐'
+     */
+    private static function readReactionAsString(BinaryReader $r): string
+    {
+        $c = $r->readInt();
+        switch ($c) {
+            case 0x79f5d419: return '';                  // reactionEmpty
+            case 0x1b2286b8: return $r->readString();    // reactionEmoji
+            case 0x8935fc73: $r->readLong(); return '🎨'; // reactionCustomEmoji
+            case 0x95d2ac92: return '⭐';                // reactionPaid
+            default:         return '';
         }
     }
 

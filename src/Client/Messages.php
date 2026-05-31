@@ -4,6 +4,7 @@ namespace XnoxsProto\Client;
 
 use XnoxsProto\TL\Functions\MessagesSendMessageRequest;
 use XnoxsProto\TL\Functions\MessagesSendMediaRequest;
+use XnoxsProto\TL\Functions\MessagesSendReactionRequest;
 use XnoxsProto\TL\Functions\ContactsGetContactsRequest;
 use XnoxsProto\TL\Functions\MessagesGetDialogsRequest;
 use XnoxsProto\TL\Functions\MessagesGetChatsRequest;
@@ -1175,13 +1176,14 @@ class Messages
             }
 
             $result[] = [
-                'id'       => $msg->id,
-                'date'     => $msg->date,
-                'text'     => $msg->text,
-                'out'      => $msg->out,
-                'type'     => $msg->type,
-                'from_id'  => $msg->fromUserId,
-                'from'     => $fromName,
+                'id'        => $msg->id,
+                'date'      => $msg->date,
+                'text'      => $msg->text,
+                'out'       => $msg->out,
+                'type'      => $msg->type,
+                'from_id'   => $msg->fromUserId,
+                'from'      => $fromName,
+                'reactions' => $msg->reactions ?? [],
             ];
         }
 
@@ -1550,6 +1552,42 @@ class Messages
             $uploader->onProgress($onProgress);
         }
         return $uploader;
+    }
+
+    // -----------------------------------------------------------------------
+    // messages.sendReaction — kirim atau hapus reaksi pada pesan
+    // -----------------------------------------------------------------------
+
+    /**
+     * Kirim atau hapus reaksi emoji pada sebuah pesan.
+     *
+     * @param InputPeer $peer       Peer chat tempat pesan berada
+     * @param int       $msgId      ID pesan yang akan direaksi
+     * @param array     $reactions  Daftar reaksi:
+     *                              [['type'=>'emoji','emoticon'=>'👍']]
+     *                              Kirim [] untuk HAPUS semua reaksi
+     * @param bool      $big        Tampilkan animasi besar
+     * @return array  ['ok'=>true,'msg_id'=>int,'reactions'=>array]
+     */
+    public function sendReaction(InputPeer $peer, int $msgId, array $reactions = [], bool $big = false): array
+    {
+        $this->assertReady();
+        $sender = $this->client->getSender();
+        if (!$sender) throw new \RuntimeException('MTProto sender belum siap');
+
+        $request = new MessagesSendReactionRequest($peer, $msgId, $reactions, $big);
+        $request = $this->client->wrapFirstRequest($request);
+
+        try {
+            $sender->send($request);
+            return ['ok' => true, 'msg_id' => $msgId, 'reactions' => $reactions];
+        } catch (\XnoxsProto\Exceptions\RPCException $e) {
+            throw new \RuntimeException(
+                sprintf('[%d] %s', $e->errorCode, $e->errorMessage),
+                $e->errorCode,
+                $e
+            );
+        }
     }
 
     private function assertReady(): void

@@ -619,6 +619,27 @@ class TelegramClient
     }
 
     // =========================================================================
+    // sendReaction() — kirim / hapus reaksi pada sebuah pesan
+    // =========================================================================
+
+    /**
+     * Kirim atau hapus reaksi pada pesan.
+     *
+     * @param string|int|InputPeer $peer       Chat tempat pesan berada
+     * @param int                  $msgId      ID pesan yang akan direaksi
+     * @param array                $reactions  Daftar reaksi:
+     *                                         [['type'=>'emoji','emoticon'=>'👍']]
+     *                                         Kosong [] = hapus semua reaksi
+     * @param bool                 $big        Tampilkan animasi penuh layar
+     * @return array  ['ok'=>true,'msg_id'=>int,'reactions'=>array]
+     */
+    public function sendReaction(string|int|InputPeer $peer, int $msgId, array $reactions = [], bool $big = false): array
+    {
+        $inputPeer = $peer instanceof InputPeer ? $peer : $this->resolvePeer($peer);
+        return $this->messages->sendReaction($inputPeer, $msgId, $reactions, $big);
+    }
+
+    // =========================================================================
     // sendFile() — auto-detect tipe media dari ekstensi/MIME, lalu upload & kirim
     // Setara dengan: await client.send_file(peer, file, caption)
     // =========================================================================

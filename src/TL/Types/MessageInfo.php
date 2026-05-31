@@ -40,6 +40,7 @@ class MessageInfo
     public bool   $out          = false;
     public string $type         = 'empty';
     public ?int   $fromUserId   = null;
+    public array  $reactions    = [];
 
     public static function fromReader(BinaryReader $reader, int $constructor): self
     {
@@ -178,7 +179,7 @@ class MessageInfo
         if ($flags & (1 << 17)) $r->readLong();
 
         // reactions:flags.20?MessageReactions
-        if ($flags & (1 << 20)) TLSkipHelper::skipMessageReactions($r);
+        if ($flags & (1 << 20)) $obj->reactions = TLSkipHelper::parseMessageReactions($r);
 
         // restriction_reason:flags.22?Vector<RestrictionReason>
         if ($flags & (1 << 22)) TLSkipHelper::skipVector(
@@ -274,7 +275,7 @@ class MessageInfo
         if ($flags & (1 << 17)) $r->readLong();
 
         // reactions:flags.20?MessageReactions
-        if ($flags & (1 << 20)) TLSkipHelper::skipMessageReactions($r);
+        if ($flags & (1 << 20)) $obj->reactions = TLSkipHelper::parseMessageReactions($r);
 
         // restriction_reason:flags.22?Vector<RestrictionReason>
         if ($flags & (1 << 22)) TLSkipHelper::skipVector(
@@ -348,7 +349,7 @@ class MessageInfo
         TLSkipHelper::skipMessageAction($r); // action — selalu ada
 
         // reactions:flags.20?MessageReactions
-        if ($flags & (1 << 20)) TLSkipHelper::skipMessageReactions($r);
+        if ($flags & (1 << 20)) $obj->reactions = TLSkipHelper::parseMessageReactions($r);
 
         // ttl_period:flags.25?int
         if ($flags & (1 << 25)) $r->readInt();

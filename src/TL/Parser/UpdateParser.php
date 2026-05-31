@@ -56,6 +56,7 @@ class UpdateParser
     const UPDATE_NOTIFY_SETTINGS         = 0xbec268ef;
     const UPDATE_WEB_PAGE                = 0x7f891213;
     const UPDATE_DRAFT_MESSAGE           = 0xee2bb969;
+    const UPDATE_MESSAGE_REACTIONS       = 0x5e1b3cb8;
 
     /**
      * Parse an update. $constructor has already been read from the stream.
@@ -349,6 +350,27 @@ class UpdateParser
                         'chat_id'    => null,
                         'channel_id' => $channelId,
                         'action'     => $action,
+                    ];
+                } catch (\Exception $e) { break; }
+
+            // --- Message reactions update ---
+            } elseif ($ctor === self::UPDATE_MESSAGE_REACTIONS) {
+                // updateMessageReactions#5e1b3cb8
+                //   flags:# peer:Peer msg_id:int top_msg_id:f.0?int
+                //   reactions:MessageReactions pts:int pts_count:int
+                try {
+                    $flags  = $r->readInt();
+                    $peer   = TLSkipHelper::readPeer($r);
+                    $msgId  = $r->readInt();
+                    if ($flags & (1 << 0)) $r->readInt(); // top_msg_id (forum thread)
+                    $reactions = TLSkipHelper::parseMessageReactions($r);
+                    $r->readInt(); // pts
+                    $r->readInt(); // pts_count
+                    $results[] = [
+                        'type'      => 'reaction_update',
+                        'peer'      => $peer,
+                        'msg_id'    => $msgId,
+                        'reactions' => $reactions,
                     ];
                 } catch (\Exception $e) { break; }
 

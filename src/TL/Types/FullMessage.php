@@ -44,6 +44,7 @@ class FullMessage
 
     public ?array  $replyMarkup   = null;
     public ?array  $media         = null;
+    public array   $reactions     = [];
 
     private mixed  $client        = null;
     public  mixed  $peerInputPeer = null;
@@ -178,7 +179,7 @@ class FullMessage
         if ($flags & (1 << 17)) $r->readLong();
 
         // reactions:flags.20?MessageReactions
-        if ($flags & (1 << 20)) TLSkipHelper::skipMessageReactions($r);
+        if ($flags & (1 << 20)) $obj->reactions = TLSkipHelper::parseMessageReactions($r);
 
         // restriction_reason:flags.22?Vector<RestrictionReason>
         if ($flags & (1 << 22)) TLSkipHelper::skipVector($r, fn($x) => TLSkipHelper::skipRestrictionReason($x));
@@ -257,7 +258,7 @@ class FullMessage
         if ($flags & (1 << 15)) $r->readInt();
         if ($flags & (1 << 16)) $r->readString();
         if ($flags & (1 << 17)) $r->readLong();
-        if ($flags & (1 << 20)) TLSkipHelper::skipMessageReactions($r);
+        if ($flags & (1 << 20)) $obj->reactions = TLSkipHelper::parseMessageReactions($r);
         if ($flags & (1 << 22)) TLSkipHelper::skipVector($r, fn($x) => TLSkipHelper::skipRestrictionReason($x));
         if ($flags & (1 << 25)) $r->readInt();
     }
@@ -310,8 +311,8 @@ class FullMessage
         $obj->date = $r->readInt();
         TLSkipHelper::skipMessageAction($r);                                       // action
 
-        if ($flags & (1 << 20)) TLSkipHelper::skipMessageReactions($r);           // reactions
-        if ($flags & (1 << 25)) $r->readInt();                                    // ttl_period
+        if ($flags & (1 << 20)) $obj->reactions = TLSkipHelper::parseMessageReactions($r); // reactions
+        if ($flags & (1 << 25)) $r->readInt();                                         // ttl_period
 
         $obj->text = '[Service Message]';
     }

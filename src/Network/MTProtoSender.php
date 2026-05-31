@@ -152,7 +152,6 @@ class MTProtoSender
                         throw $e;
                     }
                     $wait = $seconds + 1;
-                    error_log("[XnoxsProto] FLOOD_WAIT_{$seconds}s — sleeping {$wait}s (attempt {$attempt}/{$maxRetries})");
                     sleep($wait);
                     $attempt++;
                     continue;
@@ -162,7 +161,6 @@ class MTProtoSender
                 if (str_starts_with($e->errorMessage, 'SLOWMODE_WAIT_')) {
                     $seconds = (int) substr($e->errorMessage, 14);
                     $wait    = min($seconds + 1, 120);
-                    error_log("[XnoxsProto] SLOWMODE_WAIT_{$seconds}s — sleeping {$wait}s");
                     sleep($wait);
                     $attempt++;
                     continue;
@@ -174,13 +172,12 @@ class MTProtoSender
                 // Network/socket error — attempt TCP reconnect and retry
                 if ($attempt < $maxRetries - 1) {
                     $delay = min(1 + $attempt, 10); // 1s, 2s, 3s … cap at 10s
-                    error_log("[XnoxsProto] Network error (attempt {$attempt}): {$e->getMessage()} — reconnecting in {$delay}s");
                     sleep($delay);
                     try {
                         $this->connection->close();
                         $this->connection->connect();
                     } catch (\Exception $reconnectEx) {
-                        error_log("[XnoxsProto] Reconnect failed: {$reconnectEx->getMessage()}");
+                        // ignore reconnect error, will retry or throw on next iteration
                     }
                     $attempt++;
                     continue;

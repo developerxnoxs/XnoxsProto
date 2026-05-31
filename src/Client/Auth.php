@@ -814,11 +814,6 @@ class Auth
             $hasLoginEmail     = (bool)($flags & (1 << 11)); // flags.11
         }
 
-        error_log(sprintf(
-            '[XnoxsProto] account.password ctor=0x%08x flags=0x%08x hasPassword=%s hasRecovery=%s',
-            $c, $flags, $hasPassword ? 'true' : 'false', $hasRecovery ? 'true' : 'false'
-        ));
-
         $result = [
             'has_password' => $hasPassword,
             'has_recovery' => $hasRecovery,
@@ -838,24 +833,17 @@ class Auth
             //   0x004a2ff3 — original ctor
             //   0x3a912d4a — newer ctor (same fields, different CRC32)
             $curAlgoCtor = $r->readInt();
-            error_log(sprintf('[XnoxsProto] curAlgoCtor=0x%08x', $curAlgoCtor));
 
             if ($curAlgoCtor === 0x004a2ff3 || $curAlgoCtor === 0x3a912d4a) {
                 $result['salt1'] = $r->readBytes();
                 $result['salt2'] = $r->readBytes();
                 $result['g']     = $r->readInt();
                 $result['p']     = $r->readBytes();
-                error_log(sprintf(
-                    '[XnoxsProto] SRP params: salt1_len=%d salt2_len=%d g=%d p_len=%d',
-                    strlen($result['salt1']), strlen($result['salt2']),
-                    $result['g'], strlen($result['p'])
-                ));
             }
             // passwordKdfAlgoUnknown#d45ab096 or other — no extra fields
 
             $result['srp_B']  = $r->readBytes();
             $result['srp_id'] = $r->readLong();
-            error_log(sprintf('[XnoxsProto] srp_B_len=%d srp_id=%d', strlen($result['srp_B']), $result['srp_id']));
         }
 
         // hint (flags.3 in both)

@@ -103,7 +103,7 @@ $client->sendMessage('me', 'Masih tersambung.');
 | Kata sandi cloud 2FA (SRP) | ✅ |
 | Login token bot | ✅ |
 | Persistensi sesi (file / memori) | ✅ |
-| Login QR code | 🔜 |
+| Login QR code | ✅ |
 
 ### Pesan
 | Fitur | Status |
@@ -119,7 +119,7 @@ $client->sendMessage('me', 'Masih tersambung.');
 | Cari pesan (dalam chat & global) | ✅ |
 | Klik tombol inline berdasarkan posisi atau teks label | ✅ |
 | Mulai bot dengan parameter `/start` | ✅ |
-| Reaksi pesan | 🔜 |
+| Reaksi pesan | ✅ |
 
 ### Media
 | Fitur | Status |

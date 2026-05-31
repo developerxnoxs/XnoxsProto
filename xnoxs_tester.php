@@ -82,6 +82,47 @@ function mi(string $n, string $label, bool $back = false): void
     echo "  " . $numClr . C_BOLD . "[$n]" . C_RESET . "  $label\n";
 }
 
+/**
+ * Tampilkan pesan dalam gaya bubble terminal.
+ * Pesan keluar (isMine=true) rata kanan, pesan masuk rata kiri.
+ */
+function cetakBubble(string $teks, string $from, string $time, bool $isMine, int $termW = 60): void
+{
+    $MAX_TEXT = 36;
+    $lines    = explode("\n", wordwrap($teks, $MAX_TEXT, "\n", true));
+
+    $textW   = 0;
+    foreach ($lines as $l) {
+        $textW = max($textW, mb_strlen($l));
+    }
+    $timeLen = mb_strlen($time);
+    $textW   = max($textW, $timeLen + 2);
+    $bW      = $textW + 4;             // │ space text space │
+    $dashLen = max(1, $bW - 5 - $timeLen);
+
+    if ($isMine) {
+        $indent = max(0, ($termW - 2) - $bW);
+        $L = '  ' . str_repeat(' ', $indent);
+
+        echo $L . C_GREEN . '╭' . str_repeat('─', $bW - 2) . '╮' . C_RESET . "\n";
+        foreach ($lines as $l) {
+            $fill = str_repeat(' ', $textW - mb_strlen($l));
+            echo $L . C_GREEN . '│' . C_RESET . ' ' . $l . $fill . ' ' . C_GREEN . '│' . C_RESET . "\n";
+        }
+        echo $L . C_GREEN . '╰' . str_repeat('─', $dashLen) . ' ' . C_GRAY . $time . C_GREEN . ' ─╯' . C_RESET . "\n\n";
+    } else {
+        $L = '  ';
+
+        echo $L . C_CYAN . C_BOLD . $from . C_RESET . "\n";
+        echo $L . C_CYAN . '╭' . str_repeat('─', $bW - 2) . '╮' . C_RESET . "\n";
+        foreach ($lines as $l) {
+            $fill = str_repeat(' ', $textW - mb_strlen($l));
+            echo $L . C_CYAN . '│' . C_RESET . ' ' . $l . $fill . ' ' . C_CYAN . '│' . C_RESET . "\n";
+        }
+        echo $L . C_CYAN . '╰─ ' . C_GRAY . $time . C_CYAN . ' ' . str_repeat('─', $dashLen) . '╯' . C_RESET . "\n\n";
+    }
+}
+
 function coba(callable $fn): mixed
 {
     try {
@@ -732,12 +773,15 @@ function menu_pesan(TelegramClient $c): void
                 $limit = (int)(inp("  Jumlah pesan (Enter=10): ") ?: 10);
                 $msgs = coba(fn() => $c->getHistory($dialog['id'], max(1, $limit)));
                 if ($msgs) {
-                    foreach ($msgs as $m) {
-                        printf("  #%-6d | %s | %s\n",
-                            $m['id'],
-                            substr($m['date'] ?? '', 0, 16),
-                            substr($m['text'] ?? ('[' . ($m['media']['type'] ?? 'service') . ']'), 0, 60)
-                        );
+                    $peerName = $dialog['title'] ?? $dialog['display'] ?? 'Lawan bicara';
+                    echo "\n";
+                    foreach (array_reverse($msgs) as $m) {
+                        $isMine = !empty($m['out']);
+                        $from   = $m['from_name'] ?? ($isMine ? 'Saya' : $peerName);
+                        $teks   = $m['text'] ?? ('[' . ($m['media']['type'] ?? 'service') . ']');
+                        $rawDate = $m['date'] ?? '';
+                        $time   = is_numeric($rawDate) ? date('H:i', (int)$rawDate) : (strlen($rawDate) >= 16 ? substr($rawDate, 11, 5) : '--:--');
+                        cetakBubble($teks, $from, $time, $isMine);
                     }
                     info("Total: " . count($msgs) . " pesan.");
                 }
@@ -1498,13 +1542,10 @@ function chat_realtime(TelegramClient $c): void
     if ($history) {
         foreach (array_reverse($history) as $msg) {
             $isMine = !empty($msg['out']);
-            $from = $msg['from_name'] ?? ($isMine ? 'Saya' : $namaPeer);
-            $teks = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
-            $time = !empty($msg['date']) ? date('H:i:s', (int)$msg['date']) : '--:--:--';
-            $nameClr = $isMine ? C_GREEN : C_CYAN;
-            echo "  " . C_GRAY . "[$time]" . C_RESET . " "
-               . $nameClr . C_BOLD . sprintf("%-18s", $from . ':') . C_RESET . " "
-               . substr($teks, 0, 70) . "\n";
+            $from   = $msg['from_name'] ?? ($isMine ? 'Saya' : $namaPeer);
+            $teks   = $msg['text'] ?? ('[' . ($msg['media']['type'] ?? 'media') . ']');
+            $time   = !empty($msg['date']) ? date('H:i', (int)$msg['date']) : '--:--';
+            cetakBubble($teks, $from, $time, $isMine);
         }
     } else {
         info("Tidak ada riwayat pesan.");
@@ -1552,7 +1593,7 @@ function chat_realtime(TelegramClient $c): void
         }
 
         $teks = ($msg->text !== '') ? $msg->text : ('[' . ($msg->media['type'] ?? 'media') . ']');
-        $time = date('H:i:s');
+        $time = date('H:i');
 
         // Hapus baris prompt; jika baris typing tercetak, hapus juga
         echo "\r\033[K";
@@ -1563,9 +1604,7 @@ function chat_realtime(TelegramClient $c): void
             $typingUntil   = 0;
         }
 
-        echo "  " . C_GRAY . "[$time]" . C_RESET . " "
-           . C_CYAN . C_BOLD . sprintf("%-18s", $from . ':') . C_RESET . " "
-           . $teks . "\n";
+        cetakBubble($teks, $from, $time, false);
 
         $lastMsgId   = $msg->id;
         $lastMsgFrom = $from;
@@ -1693,11 +1732,9 @@ function chat_realtime(TelegramClient $c): void
             // Kirim pesan
             $res = coba(fn() => $c->sendMessage($inputPeer, $input, $replyTo));
             if ($res) {
-                $timeStr   = date('H:i:s');
-                $replyInfo = $replyTo ? C_GRAY . " (↩ {$lastMsgFrom})" . C_RESET : '';
-                echo "  " . C_GRAY . "[$timeStr]" . C_RESET . " "
-                   . C_GREEN . C_BOLD . sprintf("%-18s", 'Saya:') . C_RESET . " "
-                   . $input . $replyInfo . "\n";
+                $timeStr   = date('H:i');
+                $replyInfo = $replyTo ? " (↩ {$lastMsgFrom})" : '';
+                cetakBubble($input . $replyInfo, 'Saya', $timeStr, true);
             }
 
             echo C_GRAY . "  » " . C_RESET;

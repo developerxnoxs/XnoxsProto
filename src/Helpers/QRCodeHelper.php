@@ -484,15 +484,16 @@ class QRCodeHelper
         // XOR with mask pattern 101010000010010 (0x5412)
         $fmt = (($data << 10) | $bc) ^ 0b101010000010010;
 
-        // Primary copy: top-left finder region
-        // Bit positions 0–14 mapped to specific (row, col) pairs
+        // Primary copy: top-left finder region.
+        // ISO 18004 §7.9.2: bit 14 (MSB) → [8,0], bit 13 → [8,1], …, bit 0 → [0,8].
+        // The array is ordered MSB-first, so index 0 carries the MSB (bit 14).
         static $primary = [
             [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
             [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8],
         ];
         for ($i = 0; $i < 15; $i++) {
             [$r, $c]   = $primary[$i];
-            $m[$r][$c] = ($fmt >> $i) & 1;
+            $m[$r][$c] = ($fmt >> (14 - $i)) & 1;  // MSB-first
         }
 
         // Secondary copy: bottom-left (bits 0–6) + top-right (bits 7–14)

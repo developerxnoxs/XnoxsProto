@@ -73,9 +73,9 @@ class MessagesSendMessageRequest extends TLObject
 
         $this->peer->serialize($writer);
 
-        // reply_to: flags.0 → InputReplyTo (inputReplyToMessage#a6b1e39a)
+        // reply_to: flags.0 → InputReplyTo (inputReplyToMessage#3bd4b7c2)
         if ($this->replyToMsgId !== null) {
-            $writer->writeInt(0xa6b1e39a); // inputReplyToMessage constructor
+            $writer->writeInt(0x3bd4b7c2); // inputReplyToMessage constructor
             $writer->writeInt(0);          // flags (no optional fields)
             $writer->writeInt($this->replyToMsgId);
         }

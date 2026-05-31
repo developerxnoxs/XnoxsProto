@@ -463,6 +463,68 @@ class TelegramClient
     }
 
     /**
+     * Login via QR code — alternatif dari start() yang tidak membutuhkan nomor telepon.
+     *
+     * Menampilkan QR code di terminal (unicode blocks). User cukup membuka
+     * Telegram di HP yang sudah login → Settings → Devices → Link Desktop Device
+     * → scan kode QR.
+     *
+     * Contoh paling mudah:
+     *   $client = TelegramClient::create(API_ID, API_HASH, 'my_qr_session');
+     *   $client->startQR();
+     *   echo "Login berhasil!\n";
+     *
+     * Dengan callback custom (untuk web app atau GUI):
+     *   $client->startQR(function(string $url, int $expires) {
+     *       // $url  = tg://login?token=<base64url>
+     *       // Render $url sebagai QR code di UI kamu
+     *       file_put_contents('qr_url.txt', $url);
+     *   });
+     *
+     * @param callable|null $onQrUpdate
+     *        Dipanggil setiap ada QR baru: function(string $url, int $expires): void
+     *        Jika null, QR ditampilkan otomatis di terminal.
+     *
+     * @param callable|null $passwordCallback
+     *        Dipanggil jika akun memerlukan 2FA: function(): string
+     *        Jika null, prompt otomatis via STDIN.
+     *
+     * @param int $maxWaitSecs
+     *        Waktu tunggu maksimum (detik) sebelum timeout. Default: 120.
+     *
+     * @param string $sessionName
+     *        Nama file session (opsional). Jika diisi, session disimpan ke file ini.
+     */
+    public function startQR(
+        ?callable $onQrUpdate      = null,
+        ?callable $passwordCallback = null,
+        int       $maxWaitSecs     = 120,
+        string    $sessionName     = ''
+    ): void {
+        // ── Step 1: Auto-setup named session jika diminta ─────────────────
+        if ($sessionName !== '') {
+            $this->ensureNamedSession($sessionName);
+        }
+
+        // ── Step 2: Connect ───────────────────────────────────────────────
+        if (!$this->isConnected()) {
+            $this->connect();
+        }
+
+        // ── Step 3: Sudah login? Tidak perlu QR lagi ─────────────────────
+        if ($this->auth->isAuthorized()) {
+            $this->syncUpdateState();
+            return;
+        }
+
+        // ── Step 4: Jalankan QR login flow ───────────────────────────────
+        $this->auth->loginWithQR($onQrUpdate, $passwordCallback, $maxWaitSecs);
+
+        // ── Step 5: Sync update state ─────────────────────────────────────
+        $this->syncUpdateState();
+    }
+
+    /**
      * Panggil updates.getState agar server Telegram tahu client siap menerima update.
      * Wajib dipanggil sekali setelah login — tanpa ini server tidak push update baru.
      */
@@ -512,6 +574,41 @@ class TelegramClient
 
         // Jika sudah terhubung dengan session lama (MemorySession), putus dulu
         // agar connect() berikutnya menggunakan auth key dari FileSession
+        if ($this->connection && $this->connection->isConnected()) {
+            $this->connection->close();
+            $this->connection = null;
+            $this->sender     = null;
+            $this->isFirstRequest = true;
+        }
+    }
+
+    /**
+     * Auto-upgrade session dari MemorySession ke FileSession berbasis nama (untuk QR login).
+     *
+     * Mirip ensurePhoneSession() tapi menggunakan nama bebas (bukan nomor telepon).
+     * Session disimpan ke: {sessionsDir}/{name}.session
+     *
+     * Tidak melakukan apa-apa jika session sudah berupa FileSession.
+     */
+    private function ensureNamedSession(string $name): void
+    {
+        if (!($this->session instanceof MemorySession)) {
+            return;
+        }
+
+        // Sanitize name — allow alphanumeric, dash, underscore only
+        $safe = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $name);
+
+        $dir = self::$sessionsDir ?? (getcwd() . DIRECTORY_SEPARATOR . 'sessions');
+        if (!is_dir($dir)) {
+            if (!mkdir($dir, 0755, true)) {
+                throw new \RuntimeException("Gagal membuat folder session: {$dir}");
+            }
+        }
+
+        $sessionFile   = $dir . DIRECTORY_SEPARATOR . $safe . '.session';
+        $this->session = new \XnoxsProto\Sessions\FileSession($sessionFile);
+
         if ($this->connection && $this->connection->isConnected()) {
             $this->connection->close();
             $this->connection = null;

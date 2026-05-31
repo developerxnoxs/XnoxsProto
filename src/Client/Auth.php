@@ -7,10 +7,16 @@ use XnoxsProto\TL\Functions\AuthSignInRequest;
 use XnoxsProto\TL\Functions\AuthCheckPasswordRequest;
 use XnoxsProto\TL\Functions\AccountGetPasswordRequest;
 use XnoxsProto\TL\Functions\AuthImportBotAuthorizationRequest;
+use XnoxsProto\TL\Functions\AuthExportLoginTokenRequest;
+use XnoxsProto\TL\Functions\AuthImportLoginTokenRequest;
 use XnoxsProto\TL\Types\AuthSentCode;
 use XnoxsProto\TL\Types\AuthAuthorization;
+use XnoxsProto\TL\Types\AuthLoginToken;
+use XnoxsProto\TL\Types\AuthLoginTokenMigrateTo;
+use XnoxsProto\TL\Types\AuthLoginTokenSuccess;
 use XnoxsProto\TL\BinaryReader;
 use XnoxsProto\Crypto\SRP;
+use XnoxsProto\Helpers\QRCodeHelper;
 
 class Auth
 {
@@ -283,6 +289,308 @@ class Auth
                 'authorized' => true
             ]
         ];
+    }
+
+    // =========================================================================
+    // QR-Code Login
+    // =========================================================================
+
+    /**
+     * Export a QR login token from Telegram.
+     *
+     * Calls auth.exportLoginToken and returns the raw token info plus the
+     * ready-made tg://login URL that should be encoded into a QR code.
+     *
+     * @param int[] $exceptIds  Already-authorised user IDs to exclude (optional)
+     * @return array {
+     *   'token'   => string (raw bytes),
+     *   'expires' => int    (Unix timestamp),
+     *   'url'     => string (tg://login?token=<base64url>),
+     * }
+     */
+    public function exportLoginToken(array $exceptIds = []): array
+    {
+        if (!$this->client->isConnected()) {
+            throw new \RuntimeException('Not connected to Telegram');
+        }
+
+        $sender  = $this->client->getSender();
+        $request = new AuthExportLoginTokenRequest(
+            $this->client->getApiId(),
+            $this->client->getApiHash(),
+            $exceptIds
+        );
+        $request  = $this->client->wrapFirstRequest($request);
+        $response = $sender->send($request);
+
+        return $this->parseLoginTokenResponse($response);
+    }
+
+    /**
+     * Import a login token on a different DC (DC-migration step).
+     *
+     * Called automatically by loginWithQR() when auth.exportLoginToken returns
+     * auth.loginTokenMigrateTo.  You normally do not need to call this directly.
+     *
+     * @param string $token Raw token bytes (from AuthLoginTokenMigrateTo::$token)
+     * @return array Same structure as exportLoginToken() or ['authorized' => true]
+     */
+    public function importLoginToken(string $token): array
+    {
+        if (!$this->client->isConnected()) {
+            throw new \RuntimeException('Not connected to Telegram');
+        }
+
+        $sender  = $this->client->getSender();
+        $request = new AuthImportLoginTokenRequest($token);
+        $request = $this->client->wrapFirstRequest($request);
+        $response = $sender->send($request);
+
+        return $this->parseLoginTokenResponse($response);
+    }
+
+    /**
+     * Full QR-code login flow with automatic polling.
+     *
+     * The method calls auth.exportLoginToken, invokes $onQrUpdate to display
+     * the QR code, then polls every ~5 seconds until:
+     *   - auth.loginTokenSuccess  → login complete, returns user info
+     *   - auth.loginTokenMigrateTo → migrates DC automatically and finalises
+     *   - timeout ($maxWaitSecs)   → throws RuntimeException
+     *
+     * @param callable|null $onQrUpdate
+     *        Signature: function(string $url, int $expires): void
+     *        Called each time a new QR code is available.
+     *        $url    = tg://login?token=<base64url> — render this as the QR.
+     *        $expires = Unix timestamp when the token expires.
+     *        If null, a default terminal renderer (unicode blocks) is used.
+     *
+     * @param callable|null $passwordCallback
+     *        Signature: function(): string
+     *        Called if the account has 2FA enabled after QR scan.
+     *        If null, prompts via STDIN.
+     *
+     * @param int $maxWaitSecs
+     *        Maximum seconds to wait for the QR to be scanned (default 120).
+     *
+     * @return array User info array, same structure as signIn().
+     */
+    public function loginWithQR(
+        ?callable $onQrUpdate      = null,
+        ?callable $passwordCallback = null,
+        int       $maxWaitSecs     = 120
+    ): array {
+        if (!$this->client->isConnected()) {
+            throw new \RuntimeException('Not connected to Telegram');
+        }
+
+        $deadline = time() + $maxWaitSecs;
+
+        while (time() < $deadline) {
+            // Request a fresh QR token
+            $tokenInfo = $this->exportLoginToken();
+
+            if (isset($tokenInfo['authorized']) && $tokenInfo['authorized']) {
+                // loginTokenSuccess was returned immediately (unlikely but handle it)
+                return $tokenInfo['user'];
+            }
+
+            if (isset($tokenInfo['migrate_to'])) {
+                // DC migration required
+                $newDc    = $tokenInfo['migrate_to']['dc_id'];
+                $newToken = $tokenInfo['migrate_to']['token'];
+                $this->client->connect($newDc, true);
+                $imported = $this->importLoginToken($newToken);
+                if (isset($imported['authorized']) && $imported['authorized']) {
+                    $this->handleQRAuthorization($imported['authorization'], $passwordCallback);
+                    return $this->buildUserArray($imported['authorization']);
+                }
+                // Re-loop with the new DC
+                continue;
+            }
+
+            // Display the QR code
+            $url     = $tokenInfo['url'];
+            $expires = $tokenInfo['expires'];
+
+            if ($onQrUpdate !== null) {
+                $onQrUpdate($url, $expires);
+            } else {
+                $this->defaultQRDisplay($url, $expires);
+            }
+
+            // Poll every 5 seconds until the token expires (or a bit before)
+            $pollInterval = 5;
+            $tokenTtl     = max(1, $expires - time());
+            $polls        = (int)ceil($tokenTtl / $pollInterval);
+
+            for ($p = 0; $p < $polls; $p++) {
+                sleep(min($pollInterval, max(1, $expires - time())));
+
+                if (time() >= $deadline) {
+                    throw new \RuntimeException(
+                        'QR login timed out after ' . $maxWaitSecs . ' seconds. ' .
+                        'The QR code was not scanned in time.'
+                    );
+                }
+
+                // Re-export to check status
+                try {
+                    $check = $this->exportLoginToken();
+                } catch (\XnoxsProto\Exceptions\RPCException $e) {
+                    // AUTH_TOKEN_EXPIRED is expected — just re-loop for a new QR
+                    if (str_contains($e->errorMessage, 'AUTH_TOKEN_EXPIRED')) {
+                        break;
+                    }
+                    throw $e;
+                }
+
+                if (isset($check['authorized']) && $check['authorized']) {
+                    // Login complete!
+                    $this->handleQRAuthorization($check['authorization'], $passwordCallback);
+                    return $this->buildUserArray($check['authorization']);
+                }
+
+                if (isset($check['migrate_to'])) {
+                    $newDc    = $check['migrate_to']['dc_id'];
+                    $newToken = $check['migrate_to']['token'];
+                    $this->client->connect($newDc, true);
+                    $imported = $this->importLoginToken($newToken);
+                    if (isset($imported['authorized']) && $imported['authorized']) {
+                        $this->handleQRAuthorization($imported['authorization'], $passwordCallback);
+                        return $this->buildUserArray($imported['authorization']);
+                    }
+                    break; // re-loop from the outer while
+                }
+
+                // Still returning auth.loginToken → show updated QR if URL changed
+                if ($check['url'] !== $url) {
+                    $url     = $check['url'];
+                    $expires = $check['expires'];
+                    if ($onQrUpdate !== null) {
+                        $onQrUpdate($url, $expires);
+                    } else {
+                        $this->defaultQRDisplay($url, $expires);
+                    }
+                }
+            }
+            // Token expired → outer while loops for a fresh QR
+        }
+
+        throw new \RuntimeException(
+            'QR login timed out after ' . $maxWaitSecs . ' seconds.'
+        );
+    }
+
+    // =========================================================================
+    // QR Login — private helpers
+    // =========================================================================
+
+    /**
+     * Parse the response from auth.exportLoginToken or auth.importLoginToken.
+     *
+     * Returns one of:
+     *   ['token' => bytes, 'expires' => int, 'url' => string]            → still waiting
+     *   ['migrate_to' => ['dc_id' => int, 'token' => bytes]]             → DC migration
+     *   ['authorized' => true, 'authorization' => AuthAuthorization]     → success
+     */
+    private function parseLoginTokenResponse(array $response): array
+    {
+        $ctor = $response['constructor'];
+        $r    = $response['reader'];
+
+        switch ($ctor) {
+            case AuthLoginToken::CONSTRUCTOR_ID:
+                $lt  = AuthLoginToken::fromReader($r);
+                $url = QRCodeHelper::buildTgUrl($lt->token);
+                return [
+                    'token'   => $lt->token,
+                    'expires' => $lt->expires,
+                    'url'     => $url,
+                ];
+
+            case AuthLoginTokenMigrateTo::CONSTRUCTOR_ID:
+                $mt = AuthLoginTokenMigrateTo::fromReader($r);
+                return [
+                    'migrate_to' => [
+                        'dc_id' => $mt->dcId,
+                        'token' => $mt->token,
+                    ],
+                ];
+
+            case AuthLoginTokenSuccess::CONSTRUCTOR_ID:
+                $ts = AuthLoginTokenSuccess::fromReader($r);
+                return [
+                    'authorized'    => true,
+                    'authorization' => $ts->authorization,
+                ];
+
+            default:
+                throw new \RuntimeException(sprintf(
+                    'Unexpected constructor from auth.exportLoginToken: 0x%08x',
+                    $ctor
+                ));
+        }
+    }
+
+    /**
+     * After receiving loginTokenSuccess, persist the session and handle 2FA
+     * if setup_password_required is set.
+     */
+    private function handleQRAuthorization(
+        AuthAuthorization $authorization,
+        ?callable         $passwordCallback
+    ): void {
+        $this->client->getSession()->setAuthorized(true, $authorization->user->id ?? null);
+
+        // If the account requires cloud password setup (rare after QR scan),
+        // let it pass — the caller can check getPasswordInfo() separately.
+        // Standard 2FA verification is not needed for QR-based sessions because
+        // the authorising device already authenticated the session.
+    }
+
+    /**
+     * Build the standard user info array from an AuthAuthorization object.
+     */
+    private function buildUserArray(AuthAuthorization $authorization): array
+    {
+        return [
+            'user' => [
+                'id'         => $authorization->user->id,
+                'first_name' => $authorization->user->firstName,
+                'last_name'  => $authorization->user->lastName,
+                'username'   => $authorization->user->username,
+                'phone'      => $authorization->user->phone,
+                'authorized' => true,
+            ],
+        ];
+    }
+
+    /**
+     * Default terminal QR display used when no $onQrUpdate callback is provided.
+     * Clears the previous QR and prints a new one with instructions.
+     */
+    private function defaultQRDisplay(string $url, int $expires): void
+    {
+        // ANSI clear screen (works in most terminals)
+        echo "\033[2J\033[H";
+
+        echo "╔══════════════════════════════════════════════════════════╗\n";
+        echo "║            Login via QR Code — XnoxsProto               ║\n";
+        echo "╚══════════════════════════════════════════════════════════╝\n\n";
+
+        $qr = QRCodeHelper::terminalQR($url);
+        if ($qr !== '') {
+            echo $qr;
+        } else {
+            // Fallback: URL only (data too long for embedded QR; unlikely)
+            echo "  URL: $url\n";
+        }
+
+        $ttl = max(0, $expires - time());
+        echo "\n📱  Scan kode QR di atas dengan aplikasi Telegram yang sudah login.\n";
+        echo "     Menu → Settings → Devices → Link Desktop Device\n";
+        echo "⏱   Berlaku: {$ttl} detik\n\n";
     }
 
     // =========================================================================

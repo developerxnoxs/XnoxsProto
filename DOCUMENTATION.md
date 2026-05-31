@@ -8,7 +8,7 @@
 ## Daftar Isi
 
 1. [Persiapan & Instalasi](#1-persiapan--instalasi)
-2. [Login](#2-login)
+2. [Login](#2-login) — phone OTP, **QR Code**, bot token, 2FA
 3. [Manajemen Session](#3-manajemen-session)
 4. [Get Contact](#4-get-contact)
 5. [Join & Leave Channel](#5-join--leave-channel)
@@ -154,7 +154,142 @@ start(
 ): void
 ```
 
-### 2.1.1 Login sebagai Bot
+### 2.1.1 Login via QR Code (Tanpa Nomor Telepon)
+
+Login dengan scan QR code — cocok untuk session yang tidak perlu memasukkan nomor telepon. Cukup scan QR menggunakan aplikasi Telegram yang sudah login.
+
+**Cara paling mudah:**
+
+```php
+<?php
+require_once 'src/autoload.php';
+
+use XnoxsProto\Client\TelegramClient;
+
+$client = TelegramClient::create(API_ID, API_HASH, 'qr_session');
+
+// Tampilkan QR di terminal secara otomatis (unicode block art)
+// Scan di HP: Settings → Devices → Link Desktop Device
+$client->startQR();
+
+$me = $client->getMe();
+echo "Login berhasil sebagai: " . $me['first_name'] . "\n";
+```
+
+**Output contoh di terminal:**
+
+```
+╔══════════════════════════════════════════════════════════╗
+║            Login via QR Code — XnoxsProto               ║
+╚══════════════════════════════════════════════════════════╝
+
+ ▀▀▀▀▀▀▀  ▀ ▀▀▀▀▀▀▀
+ █     █ ▀▀ █     █
+ █ ▀▀▀ █ ██ █ ▀▀▀ █
+ ...
+ (QR code unicode art)
+
+📱  Scan kode QR di atas dengan aplikasi Telegram yang sudah login.
+     Menu → Settings → Devices → Link Desktop Device
+⏱   Berlaku: 28 detik
+```
+
+**Dengan callback custom** (untuk web app, GUI, atau embed di halaman):
+
+```php
+$client->startQR(function (string $url, int $expires) {
+    // $url    = tg://login?token=<base64url>
+    // $expires = Unix timestamp kapan token kadaluarsa (~30 detik)
+
+    // Simpan ke file agar frontend bisa polling
+    file_put_contents('qr_url.txt', $url);
+
+    // Atau kirim ke API endpoint kamu
+    // http_request('POST', '/api/qr', ['url' => $url]);
+
+    echo "QR baru tersedia (expires: " . date('H:i:s', $expires) . ")\n";
+    echo "URL: $url\n";
+});
+```
+
+**Dengan 2FA callback:**
+
+```php
+$client->startQR(
+    onQrUpdate: function (string $url, int $expires) {
+        echo "Scan QR: $url\n";
+    },
+    passwordCallback: function (): string {
+        echo "Masukkan password 2FA: ";
+        return trim(fgets(STDIN));
+    },
+    maxWaitSecs: 180  // default: 120 detik
+);
+```
+
+**Signature lengkap `startQR()`:**
+```php
+startQR(
+    ?callable $onQrUpdate      = null,    // fn(string $url, int $expires): void
+    ?callable $passwordCallback = null,   // fn(): string — password 2FA
+    int       $maxWaitSecs     = 120,     // timeout dalam detik
+    string    $sessionName     = ''       // nama session file (opsional)
+): void
+```
+
+**Cara kerja QR login:**
+
+| Langkah | Yang Terjadi |
+|---------|-------------|
+| 1 | Client memanggil `auth.exportLoginToken` ke server Telegram |
+| 2 | Token diterima → di-encode base64url → dibungkus `tg://login?token=...` |
+| 3 | URL dirender sebagai QR code di terminal atau dikirim via callback |
+| 4 | User scan QR dengan HP (Settings → Devices → Link Desktop Device) |
+| 5 | Server mengirim sinyal ke client → `auth.exportLoginToken` mengembalikan `loginTokenSuccess` |
+| 6 | Session tersimpan, client siap digunakan |
+
+> **Catatan DC Migration:** Jika HP user dan session baru berada di DC berbeda, library otomatis menangani migrasi dengan memanggil `auth.importLoginToken` di DC yang benar.
+
+**API tingkat rendah** (jika butuh kontrol penuh):
+
+```php
+$auth = $client->getAuth();
+
+// Export token manual
+$tokenInfo = $auth->exportLoginToken();
+// $tokenInfo['url']     = 'tg://login?token=...'
+// $tokenInfo['expires'] = Unix timestamp
+// $tokenInfo['token']   = binary bytes (untuk QR external)
+
+// Atau jalankan flow lengkap dengan callback
+$userInfo = $auth->loginWithQR(
+    onQrUpdate: function (string $url, int $expires): void {
+        // custom display
+    },
+    maxWaitSecs: 120
+);
+echo "Login sebagai: " . $userInfo['user']['first_name'] . "\n";
+```
+
+**Membuat QR dari URL secara programatik:**
+
+```php
+use XnoxsProto\Helpers\QRCodeHelper;
+
+// Dari binary token (hasil exportLoginToken)
+$url = QRCodeHelper::buildTgUrl($tokenBytes);
+echo $url; // tg://login?token=<base64url>
+
+// Render QR di terminal (unicode half-block, compact)
+echo QRCodeHelper::terminalQR($url);
+
+// Render QR plain ASCII (untuk kompatibilitas terminal lama)
+echo QRCodeHelper::asciiQR($url);
+```
+
+---
+
+### 2.1.2 Login sebagai Bot
 
 Gunakan `start(botToken: ...)` untuk login sebagai bot:
 

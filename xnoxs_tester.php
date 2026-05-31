@@ -279,6 +279,27 @@ function pilihChannel(TelegramClient $c, string $prompt = 'Pilih channel/supergr
     return $pick ? $pick['data'] : null;
 }
 
+/** Filter dialog hanya supergroup (type='channel' + is_supergroup=true). */
+function pilihSupergroup(TelegramClient $c, string $prompt = 'Pilih supergroup'): ?array
+{
+    echo "  Mengambil dialog...\n";
+    $dialogs = coba(fn() => $c->getDialogs(80));
+    if (!$dialogs) return null;
+    $filtered = array_values(array_filter(
+        $dialogs,
+        fn($d) => ($d['type'] ?? '') === 'channel' && !empty($d['is_supergroup'])
+    ));
+    if (empty($filtered)) { info("Tidak ada supergroup di dialog. (Channel broadcast tidak mendukung slow mode)"); return null; }
+    $items = array_map(fn($d) => [
+        'label' => sprintf("[Supergroup ] %s%s",
+            $d['title'] ?? 'Tanpa Nama',
+            !empty($d['username']) ? " (@{$d['username']})" : ''),
+        'data'  => $d,
+    ], $filtered);
+    $pick = pilihList($items, $prompt);
+    return $pick ? $pick['data'] : null;
+}
+
 /**
  * Ambil anggota dari grup/channel yang sudah dipilih, lalu tampilkan untuk dipilih.
  * Mendukung tipe 'chat' (getChatMembers) dan 'channel' (getChannelMembers).
@@ -1438,7 +1459,7 @@ function menu_grup(TelegramClient $c): void
 
             case '14': // ── Slow mode
                 subjudul("Slow Mode");
-                $ch = pilihChannel($c, "Pilih supergroup");
+                $ch = pilihSupergroup($c, "Pilih supergroup");
                 if (!$ch) break;
                 echo "  Detik (0=matikan, 10, 30, 60, 300, 900, 3600): ";
                 $detik = (int)inp('');

@@ -40,6 +40,7 @@
 31. [Pengaturan Privasi (Account Privacy)](#31-pengaturan-privasi-account-privacy)
 32. [Manajemen Grup, Supergroup & Channel](#32-manajemen-grup-supergroup--channel) — createChannel, deleteChat, editChatTitle, toggleSignatures, toggleSlowMode, setDefaultPermissions, toggleJoinToSend, toggleJoinRequest, exportInviteLink
 33. [Script Uji Interaktif (xnoxs_tester.php)](#33-script-uji-interaktif-xnoxs_testerphp) — menu CLI lengkap, pilih peer dari daftar, semua fitur library
+34. [Reaksi Pesan (sendReaction)](#34-reaksi-pesan-sendreaction) — kirim, hapus, baca, dan terima notifikasi reaksi real-time
 
 ---
 
@@ -3441,6 +3442,7 @@ Script otomatis mendeteksi file session pertama di folder `sessions/`. Pastikan 
 | Cari pesan global | `searchGlobal()` |
 | Pin / Unpin pesan | `pinMessage()` / `unpinMessage()` |
 | Kirim polling / kuis | `sendPoll()` |
+| Kirim / hapus reaksi | `sendReaction()` |
 
 #### Menu 3 — Media
 | Opsi | Method yang diuji |
@@ -3531,6 +3533,339 @@ Script menggunakan file di folder `test_assets/` sebagai nilai default:
 | `test_assets/test_doc.txt` | Uji kirim dokumen |
 
 Bisa diganti dengan path file lain saat diminta — tekan Enter untuk pakai default.
+
+---
+
+## 34. Reaksi Pesan (sendReaction)
+
+Fitur reaksi memungkinkan kamu memberi emoji reaksi ke pesan — mirip tombol "like" di Telegram. Library mendukung kirim reaksi, hapus reaksi, membaca reaksi dari riwayat chat, dan menerima notifikasi reaksi secara real-time.
+
+---
+
+### 34.1 Cara Penggunaan — Langkah demi Langkah
+
+#### Langkah 1 — Pastikan sudah login
+
+```php
+use XnoxsProto\Client\TelegramClient;
+
+$client = new TelegramClient(API_ID, API_HASH, 'nama_sesi');
+$client->connect();
+
+// Login jika belum
+$client->start(
+    phone:       '+6281234567890',
+    onPhoneCode: fn() => readline('Kode OTP: '),
+    onPassword:  fn() => readline('Password 2FA (jika ada): ')
+);
+```
+
+---
+
+#### Langkah 2 — Tentukan target pesan
+
+Kamu butuh dua hal: **peer** (siapa / chat apa) dan **msg_id** (nomor pesan mana).
+
+**Cara A — Ambil dari riwayat chat**
+
+```php
+// Ambil 10 pesan terakhir dari @target
+$history = $client->getHistory('@target', limit: 10);
+
+// Tampilkan daftar untuk memilih
+foreach ($history as $msg) {
+    echo "[{$msg['id']}] {$msg['text']}\n";
+}
+
+// Pilih pesan paling baru
+$msgId = $history[0]['id'];
+$peer  = '@target';
+```
+
+**Cara B — Gunakan ID pesan yang sudah diketahui**
+
+```php
+$peer  = '@username';   // username, nomor HP, atau integer user/chat ID
+$msgId = 123;           // ID pesan dari Telegram
+```
+
+**Cara C — Dari event pesan masuk (otomatis)**
+
+```php
+$client->onUpdate(function ($event) use ($client) {
+    if ($event->type !== 'new_message') return;
+
+    $msg   = $event->data['message'];
+    $msgId = $msg->id;
+    $peer  = $msg->peerId;  // InputPeer siap pakai
+
+    // React langsung saat pesan masuk
+    $client->sendReaction($peer, $msgId, [
+        ['type' => 'emoji', 'emoticon' => '👍']
+    ]);
+    echo "Auto-react 👍 ke pesan #{$msgId}\n";
+});
+
+$client->runUntilDisconnected();
+```
+
+---
+
+#### Langkah 3 — Kirim reaksi
+
+```php
+// ── Emoji standar ──────────────────────────────────────
+$client->sendReaction($peer, $msgId, [
+    ['type' => 'emoji', 'emoticon' => '👍']
+]);
+
+// ── Beberapa emoji sekaligus (butuh Telegram Premium) ──
+$client->sendReaction($peer, $msgId, [
+    ['type' => 'emoji', 'emoticon' => '🔥'],
+    ['type' => 'emoji', 'emoticon' => '❤️'],
+]);
+
+// ── Animasi besar / full-screen ────────────────────────
+$client->sendReaction($peer, $msgId, [
+    ['type' => 'emoji', 'emoticon' => '🎉']
+], big: true);
+
+// ── Custom emoji Telegram Premium ──────────────────────
+// (butuh document_id stiker Premium)
+$client->sendReaction($peer, $msgId, [
+    ['type' => 'custom_emoji', 'document_id' => 5123456789012345678]
+]);
+```
+
+#### Langkah 4 — Hapus reaksi
+
+```php
+// Kirim array kosong = cabut semua reaksimu dari pesan itu
+$client->sendReaction($peer, $msgId, []);
+```
+
+#### Langkah 5 — Verifikasi reaksi terkirim
+
+```php
+// Ambil ulang riwayat, lalu cek field 'reactions'
+$history = $client->getHistory($peer, limit: 5);
+
+foreach ($history as $msg) {
+    if ($msg['id'] !== $msgId) continue;
+
+    echo "Pesan : {$msg['text']}\n";
+    echo "Reaksi:\n";
+    foreach ($msg['reactions'] as $rxn) {
+        $tanda = $rxn['chosen'] ? ' ← milikmu' : '';
+        echo "  {$rxn['emoji']}  ×{$rxn['count']}{$tanda}\n";
+    }
+}
+```
+
+Output contoh:
+```
+Pesan : Halo semua!
+Reaksi:
+  👍  ×3 ← milikmu
+  ❤️  ×1
+```
+
+---
+
+### 34.2 Signature Method
+
+```php
+TelegramClient::sendReaction(
+    string|int|InputPeer $peer,      // target chat / user
+    int                  $msgId,     // ID pesan yang direaksi
+    array                $reactions, // array reaksi (kosong = hapus)
+    bool                 $big  = false  // animasi full-screen
+): array
+```
+
+**Format satu item `$reactions`:**
+
+| Key | Nilai | Keterangan |
+|-----|-------|------------|
+| `type` | `'emoji'` | Emoji standar |
+| `emoticon` | mis. `'👍'` | Karakter emoji UTF-8 |
+| `type` | `'custom_emoji'` | Emoji Premium |
+| `document_id` | `int` | ID dokumen stiker Premium |
+
+---
+
+### 34.3 Membaca Reaksi dari Riwayat
+
+`getHistory()` menyertakan field `reactions` di setiap pesan secara otomatis:
+
+```php
+$history = $client->getHistory('@username', limit: 20);
+
+foreach ($history as $msg) {
+    if (empty($msg['reactions'])) continue;
+
+    echo "Pesan #{$msg['id']}: {$msg['text']}\n";
+    foreach ($msg['reactions'] as $rxn) {
+        echo "  {$rxn['emoji']} ×{$rxn['count']}";
+        echo $rxn['chosen'] ? "  ✓\n" : "\n";
+    }
+}
+```
+
+**Format objek reaksi (`$rxn`):**
+
+| Field | Tipe | Keterangan |
+|-------|------|------------|
+| `emoji` | `string` | Karakter emoji UTF-8 (mis. `'👍'`) |
+| `count` | `int` | Total pengguna yang memberi reaksi ini |
+| `chosen` | `bool` | `true` = reaksi ini milik akunmu sendiri |
+
+---
+
+### 34.4 Notifikasi Reaksi Real-time
+
+Saat pengguna lain memberikan reaksi ke pesanmu, server mengirim update `updateMessageReactions`. Library secara otomatis mem-parse-nya dan mengubahnya menjadi event `reaction_update`.
+
+```php
+$client->onUpdate(function ($event) {
+    if ($event->type !== 'reaction_update') return;
+
+    $msgId     = $event->data['msg_id'];
+    $reactions = $event->data['reactions']; // format sama dengan getHistory
+
+    echo "Ada reaksi baru di pesan #{$msgId}:\n";
+    foreach ($reactions as $rxn) {
+        echo "  {$rxn['emoji']} ×{$rxn['count']}\n";
+    }
+});
+
+$client->runUntilDisconnected();
+```
+
+---
+
+### 34.5 Contoh Script Lengkap
+
+Salin dan jalankan — tanpa perlu tester:
+
+```php
+<?php
+require_once 'vendor/autoload.php';
+
+use XnoxsProto\Client\TelegramClient;
+
+// ── 1. Inisialisasi ──────────────────────────────────────────
+$client = new TelegramClient(
+    (int) getenv('TG_API_ID'),
+    getenv('TG_API_HASH'),
+    'sesi_react_test'
+);
+$client->connect();
+
+$client->start(
+    phone:       '+6281234567890',
+    onPhoneCode: fn() => readline('Kode OTP: '),
+    onPassword:  fn() => readline('Password 2FA: ')
+);
+
+// ── 2. Pilih pesan ───────────────────────────────────────────
+$peer    = '@username_target';
+$history = $client->getHistory($peer, limit: 5);
+
+echo "\nPilih pesan yang ingin direaksi:\n";
+foreach ($history as $i => $msg) {
+    echo "  [{$msg['id']}] " . mb_substr($msg['text'], 0, 50) . "\n";
+}
+
+$msgId = (int) readline("\nMasukkan ID pesan: ");
+
+// ── 3. Kirim reaksi ──────────────────────────────────────────
+$emoji = readline("Masukkan emoji (mis. 👍): ");
+
+$client->sendReaction($peer, $msgId, [
+    ['type' => 'emoji', 'emoticon' => trim($emoji)]
+]);
+
+echo "Reaksi {$emoji} berhasil dikirim ke pesan #{$msgId}!\n";
+
+// ── 4. Verifikasi ────────────────────────────────────────────
+sleep(1);
+$check = $client->getHistory($peer, limit: 20);
+
+foreach ($check as $msg) {
+    if ($msg['id'] !== $msgId) continue;
+    echo "\nReaksi sekarang di pesan #{$msgId}:\n";
+    foreach ($msg['reactions'] as $rxn) {
+        $mine = $rxn['chosen'] ? ' ← milikmu' : '';
+        echo "  {$rxn['emoji']}  ×{$rxn['count']}{$mine}\n";
+    }
+    break;
+}
+
+// ── 5. (Opsional) Hapus reaksi ───────────────────────────────
+if (readline("\nHapus reaksi? (y/n): ") === 'y') {
+    $client->sendReaction($peer, $msgId, []);
+    echo "Reaksi dihapus.\n";
+}
+
+$client->disconnect();
+```
+
+Jalankan:
+
+```bash
+TG_API_ID=12345 TG_API_HASH=abc123 php react_test.php
+```
+
+---
+
+### 34.6 Via CLI Tester (`xnoxs_tester.php`)
+
+Cara tercepat mencoba fitur react tanpa menulis kode:
+
+```bash
+TG_API_ID=xxxxx TG_API_HASH=yyy php xnoxs_tester.php
+```
+
+**Cara 1 — Dari menu:**
+
+```
+Menu Utama → [2] Pesan & Chat → [11] Kirim Reaksi ke Pesan
+```
+
+Masukkan peer, ID pesan, dan emoji. Library mengirim reaksi dan langsung memverifikasinya dari `getHistory`.
+
+**Cara 2 — Dari Mode Chat Realtime:**
+
+```
+Menu Utama → [5] Mode Chat Realtime → masukkan username/ID
+```
+
+Di dalam mode chat, gunakan perintah berikut:
+
+| Perintah | Fungsi |
+|----------|--------|
+| `/react 👍` | Beri reaksi emoji ke pesan terakhir yang masuk |
+| `/react 🔥` | Beri reaksi emoji lain |
+| `/unreact` | Hapus semua reaksimu dari pesan terakhir |
+| teks biasa | Kirim pesan baru |
+| `/quit` | Keluar dari mode chat |
+
+Reaksi dari pengguna lain muncul otomatis sebagai notifikasi:
+
+```
+⚡ Reaksi  Alice: 👍 ×3  ❤️ ×1  pada pesan #42
+```
+
+Dan di bawah setiap bubble pesan akan ditampilkan reaksi terkini:
+
+```
+  Alice
+  ╭───────────────────────╮
+  │ Halo! Bagaimana kabar?│
+  ╰─ 14:35 ───────────────╯
+  👍 3✓   ❤️ 1
+```
 
 ---
 

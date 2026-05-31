@@ -559,81 +559,99 @@ class Auth
     /**
      * Complete a QR login that triggered SESSION_PASSWORD_NEEDED (2FA).
      *
-     * Fetches SRP parameters, obtains the cloud password from the callback
-     * (or prompts STDIN), computes the SRP proof, and calls auth.checkPassword.
-     * Returns the AuthAuthorization on success.
+     * Behaviour mirrors start(): prompts automatically via STDIN when no
+     * $passwordCallback is provided, and retries indefinitely on wrong password
+     * (re-fetching fresh SRP nonces each round). When a $passwordCallback is
+     * supplied it is called again on each retry so the caller can ask the user
+     * for a new value from a GUI or other interface.
      *
-     * @param callable|null $passwordCallback  Signature: function(): string
+     * @param callable|null $passwordCallback  fn(): string — return the cloud password
      */
     private function performQR2FA(?callable $passwordCallback): AuthAuthorization
     {
-        $sender = $this->client->getSender();
+        $sender  = $this->client->getSender();
+        $attempt = 0;
+        $hint    = '';
 
-        // Step 1: Fetch SRP parameters (also contains the password hint)
-        $pwdRequest  = new AccountGetPasswordRequest();
-        $pwdRequest  = $this->client->wrapFirstRequest($pwdRequest);
-        $pwdResponse = $sender->send($pwdRequest);
-        $srpParams   = $this->parseAccountPassword($pwdResponse);
+        while (true) {
+            $attempt++;
 
-        if (!$srpParams['has_password']) {
-            throw new \RuntimeException(
-                'SERVER_ERROR: SESSION_PASSWORD_NEEDED tapi akun tidak punya cloud password.'
-            );
-        }
+            // ── Fetch fresh SRP parameters every attempt (nonces change each round) ──
+            $pwdRequest  = new AccountGetPasswordRequest();
+            $pwdRequest  = $this->client->wrapFirstRequest($pwdRequest);
+            $pwdResponse = $sender->send($pwdRequest);
+            $srpParams   = $this->parseAccountPassword($pwdResponse);
 
-        // Step 2: Obtain the password from the caller or from STDIN
-        if ($passwordCallback !== null) {
-            $password = (string)$passwordCallback();
-        } else {
-            $hint = $srpParams['hint'] ?? '';
-            echo "\n";
-            if ($hint !== '') {
-                echo "🔐  Cloud password hint: {$hint}\n";
+            if (!$srpParams['has_password']) {
+                throw new \RuntimeException(
+                    'SERVER_ERROR: SESSION_PASSWORD_NEEDED tapi akun tidak punya cloud password.'
+                );
             }
-            echo "🔐  Akun memiliki verifikasi 2 langkah. Masukkan cloud password: ";
-            if (function_exists('readline')) {
-                $password = (string)readline('');
+
+            // Show hint once on the first attempt (STDIN only)
+            if ($attempt === 1 && $passwordCallback === null) {
+                $hint = $srpParams['hint'] ?? '';
+                echo "\n🔒  Akun ini dilindungi Two-Step Verification (2FA).\n";
+                if ($hint !== '') {
+                    echo "💡  Petunjuk password: {$hint}\n";
+                }
+            }
+
+            // ── Obtain password ───────────────────────────────────────────────
+            if ($passwordCallback !== null) {
+                $password = (string)$passwordCallback();
             } else {
-                $password = trim((string)fgets(STDIN));
+                echo "🔑  Masukkan cloud password (2FA): ";
+                if (function_exists('readline')) {
+                    $password = (string)readline('');
+                } else {
+                    $password = trim((string)fgets(STDIN));
+                }
+                echo "\n";
             }
-            echo "\n";
-        }
 
-        // Step 3: Compute SRP proof
-        $proof = SRP::computeCheck(
-            $password,
-            $srpParams['salt1'],
-            $srpParams['salt2'],
-            $srpParams['g'],
-            $srpParams['p'],
-            $srpParams['srp_B'],
-            $srpParams['srp_id']
-        );
+            // ── Compute SRP proof ─────────────────────────────────────────────
+            $proof = SRP::computeCheck(
+                $password,
+                $srpParams['salt1'],
+                $srpParams['salt2'],
+                $srpParams['g'],
+                $srpParams['p'],
+                $srpParams['srp_B'],
+                $srpParams['srp_id']
+            );
 
-        // Step 4: Send auth.checkPassword
-        $request = new AuthCheckPasswordRequest(
-            $proof['srp_id'],
-            $proof['A'],
-            $proof['M1']
-        );
+            // ── Send auth.checkPassword ───────────────────────────────────────
+            $request = new AuthCheckPasswordRequest(
+                $proof['srp_id'],
+                $proof['A'],
+                $proof['M1']
+            );
 
-        try {
-            $response = $sender->send($request);
-        } catch (\XnoxsProto\Exceptions\RPCException $e) {
-            if (str_contains($e->errorMessage, 'PASSWORD_HASH_INVALID')) {
-                throw new \RuntimeException('Kata sandi 2FA salah. Periksa kembali dan coba lagi.', 400, $e);
+            try {
+                $response = $sender->send($request);
+            } catch (\XnoxsProto\Exceptions\RPCException $e) {
+                if (str_contains($e->errorMessage, 'PASSWORD_HASH_INVALID')) {
+                    // Wrong password — retry (same behaviour as start())
+                    if ($passwordCallback === null) {
+                        echo "❌  Password salah. Coba lagi.\n";
+                    } else {
+                        echo "❌  Password 2FA salah (percobaan #{$attempt}). Callback dipanggil ulang…\n";
+                    }
+                    continue; // re-enter loop with fresh SRP params
+                }
+                throw $e;
             }
-            throw $e;
-        }
 
-        if ($response['constructor'] !== AuthAuthorization::CONSTRUCTOR_ID) {
-            throw new \RuntimeException(sprintf(
-                'Unexpected constructor from auth.checkPassword: 0x%08x',
-                $response['constructor']
-            ));
-        }
+            if ($response['constructor'] !== AuthAuthorization::CONSTRUCTOR_ID) {
+                throw new \RuntimeException(sprintf(
+                    'Unexpected constructor from auth.checkPassword: 0x%08x',
+                    $response['constructor']
+                ));
+            }
 
-        return AuthAuthorization::fromReader($response['reader']);
+            return AuthAuthorization::fromReader($response['reader']);
+        }
     }
 
     /**

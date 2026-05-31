@@ -212,32 +212,46 @@ $client->startQR(function (string $url, int $expires) {
 });
 ```
 
-**Dengan 2FA callback:**
+**Dengan 2FA (akun yang punya cloud password):**
+
+Jika akun memiliki Two-Step Verification, library **otomatis menangani 2FA** — persis seperti `start()`:
 
 ```php
+// Tanpa callback — library prompt otomatis via STDIN, retry jika salah
+$client->startQR();
+
+// Dengan passwordCallback — callback dipanggil ulang jika password salah
 $client->startQR(
     onQrUpdate: function (string $url, int $expires) {
         echo "Scan QR: $url\n";
     },
     passwordCallback: function (): string {
-        echo "Masukkan password 2FA: ";
+        echo "Masukkan cloud password 2FA: ";
         return trim(fgets(STDIN));
     },
     maxWaitSecs: 180  // default: 120 detik
 );
 ```
 
+> **Output terminal saat 2FA terdeteksi (mode STDIN):**
+> ```
+> 🔒  Akun ini dilindungi Two-Step Verification (2FA).
+> 💡  Petunjuk password: kata sandi kamu
+> 🔑  Masukkan cloud password (2FA): ▌
+> ```
+> Jika password salah, library langsung meminta ulang tanpa melempar exception.
+
 **Signature lengkap `startQR()`:**
 ```php
 startQR(
     ?callable $onQrUpdate      = null,    // fn(string $url, int $expires): void
-    ?callable $passwordCallback = null,   // fn(): string — password 2FA
+    ?callable $passwordCallback = null,   // fn(): string — cloud password 2FA
     int       $maxWaitSecs     = 120,     // timeout dalam detik
     string    $sessionName     = ''       // nama session file (opsional)
 ): void
 ```
 
-**Cara kerja QR login:**
+**Cara kerja QR login (termasuk 2FA):**
 
 | Langkah | Yang Terjadi |
 |---------|-------------|
@@ -245,10 +259,11 @@ startQR(
 | 2 | Token diterima → di-encode base64url → dibungkus `tg://login?token=...` |
 | 3 | URL dirender sebagai QR code di terminal atau dikirim via callback |
 | 4 | User scan QR dengan HP (Settings → Devices → Link Desktop Device) |
-| 5 | Server mengirim sinyal ke client → `auth.exportLoginToken` mengembalikan `loginTokenSuccess` |
+| 5a | *(Akun tanpa 2FA)* Server mengembalikan `loginTokenSuccess` → session tersimpan |
+| 5b | *(Akun dengan 2FA)* Server melempar `SESSION_PASSWORD_NEEDED` → library otomatis memanggil `account.getPassword`, menampilkan hint, meminta password via STDIN atau `passwordCallback`, menghitung SRP proof, dan memanggil `auth.checkPassword` — **diulang sampai password benar** |
 | 6 | Session tersimpan, client siap digunakan |
 
-> **Catatan DC Migration:** Jika HP user dan session baru berada di DC berbeda, library otomatis menangani migrasi dengan memanggil `auth.importLoginToken` di DC yang benar.
+> **Catatan DC Migration:** Jika HP user dan session baru berada di DC berbeda, library otomatis menangani migrasi dengan memanggil `auth.importLoginToken` di DC yang benar. 2FA juga ditangani di titik ini jika diperlukan.
 
 **API tingkat rendah** (jika butuh kontrol penuh):
 

@@ -32,6 +32,7 @@ XnoxsProto adalah library PHP yang mengimplementasikan protokol [MTProto Telegra
 ```bash
 git clone https://github.com/yourusername/xnoxsproto.git
 cd xnoxsproto
+composer install
 ```
 
 Dapatkan kredensial API di **https://my.telegram.org/apps**

@@ -19,7 +19,7 @@ $sessionsDir = __DIR__ . '/sessions';
 @mkdir($sessionsDir, 0755, true);
 
 $sessionFiles = glob($sessionsDir . '/*.session') ?: [];
-$sessionFile = !empty($sessionFiles) ? $sessionFiles[0] : null;
+sort($sessionFiles);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
@@ -431,32 +431,118 @@ echo C_GRAY . "  MTProto PHP · Tester Fitur Lengkap\n" . C_RESET;
 echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n";
 
 TelegramClient::setSessionsDir($sessionsDir);
-$client = TelegramClient::create($API_ID, $API_HASH, $sessionFile);
 
-if ($sessionFile) {
-    echo C_GRAY . "  Session  : " . C_RESET . basename($sessionFile) . "\n";
+// ── Pilih session atau metode login ─────────────────────────────────────────
+$chosenFile = null;
+$loginMode  = null; // 'menu' | null
+
+if (count($sessionFiles) > 1) {
+    echo "\n";
+    baris(60, '─');
+    echo C_BOLD . C_CYAN . "  PILIH AKUN\n" . C_RESET;
+    baris(60, '─');
+    echo "\n";
+    foreach ($sessionFiles as $i => $sf) {
+        echo "  " . C_YELLOW . C_BOLD . "[" . ($i + 1) . "]" . C_RESET
+           . "  " . basename($sf, '.session') . "\n";
+    }
+    $newIdx = count($sessionFiles) + 1;
+    echo "\n";
+    echo "  " . C_GREEN . C_BOLD . "[$newIdx]" . C_RESET . "  ✚ Tambah akun baru\n";
+    echo "  " . C_RED   . C_BOLD . "[0]"       . C_RESET . "  Keluar\n";
+    echo "\n";
+    $pick = (int)inp("  Pilihan: ");
+    if ($pick === 0) die(C_GRAY . "  Keluar.\n" . C_RESET);
+    if ($pick >= 1 && $pick <= count($sessionFiles)) {
+        $chosenFile = $sessionFiles[$pick - 1];
+    } elseif ($pick === $newIdx) {
+        $loginMode = 'menu';
+    } else {
+        die(C_RED . "[ERROR] Pilihan tidak valid.\n" . C_RESET);
+    }
+} elseif (count($sessionFiles) === 1) {
+    $chosenFile = $sessionFiles[0];
+} else {
+    $loginMode = 'menu';
+}
+
+// ── Sambung ke session yang sudah ada ──────────────────────────────────────
+$client = null;
+if ($chosenFile) {
+    $client = TelegramClient::create($API_ID, $API_HASH, $chosenFile);
+    echo C_GRAY . "  Session  : " . C_RESET . basename($chosenFile) . "\n";
     echo C_GRAY . "  Status   : " . C_RESET . "Menghubungkan...\n";
     try {
         $client->start();
     } catch (\Throwable $e) {
         echo "  " . C_YELLOW . "⚠  Sesi tidak valid: " . $e->getMessage() . C_RESET . "\n";
-        $sessionFile = null;
+        $client    = null;
+        $loginMode = 'menu';
     }
 }
 
-if (!$sessionFile) {
+// ── Menu login baru ─────────────────────────────────────────────────────────
+if ($loginMode === 'menu') {
     echo "\n";
-    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
-    echo C_BOLD . C_CYAN . "  LOGIN BARU\n" . C_RESET;
-    echo C_GRAY . str_repeat('─', 60) . C_RESET . "\n";
-    $phone = inp("  Nomor telepon (contoh: +628123456789): ");
-    if (empty(trim($phone))) {
-        die(C_RED . "[ERROR] Nomor telepon tidak boleh kosong.\n" . C_RESET);
-    }
-    try {
-        $client->start(phone: $phone);
-    } catch (\Throwable $e) {
-        die(C_RED . "[ERROR] Login gagal: " . $e->getMessage() . "\n" . C_RESET);
+    baris(60, '─');
+    echo C_BOLD . C_CYAN . "  PILIH METODE LOGIN\n" . C_RESET;
+    baris(60, '─');
+    echo "\n";
+    mi('1', 'Nomor Telepon  (kode OTP via SMS / Telegram)');
+    mi('2', 'QR Code        (scan dengan HP yang sudah login)');
+    mi('3', 'Bot Token      (dari @BotFather)');
+    echo "\n";
+    mi('0', 'Keluar', true);
+    echo "\n";
+    $metode = inp("  Metode: ");
+
+    switch ($metode) {
+        case '1':
+            $phone = inp("  Nomor telepon (contoh: +628123456789): ");
+            if (empty(trim($phone))) {
+                die(C_RED . "[ERROR] Nomor telepon tidak boleh kosong.\n" . C_RESET);
+            }
+            $client = TelegramClient::create($API_ID, $API_HASH);
+            try {
+                $client->start(phone: $phone);
+            } catch (\Throwable $e) {
+                die(C_RED . "[ERROR] Login gagal: " . $e->getMessage() . "\n" . C_RESET);
+            }
+            break;
+
+        case '2':
+            $snDefault = 'qr_' . date('YmdHis');
+            echo C_CYAN . "  Nama session " . C_GRAY . "(Enter = '{$snDefault}')" . C_CYAN
+               . ": " . C_RESET;
+            $sname = trim(fgets(STDIN) ?: '');
+            if ($sname === '') $sname = $snDefault;
+            $client = TelegramClient::create($API_ID, $API_HASH);
+            echo "\n";
+            try {
+                $client->startQR(sessionName: $sname);
+            } catch (\Throwable $e) {
+                die(C_RED . "[ERROR] QR login gagal: " . $e->getMessage() . "\n" . C_RESET);
+            }
+            break;
+
+        case '3':
+            $token = inp("  Bot token dari @BotFather: ");
+            if (empty(trim($token))) {
+                die(C_RED . "[ERROR] Bot token tidak boleh kosong.\n" . C_RESET);
+            }
+            $botId  = explode(':', trim($token))[0];
+            $sname  = 'bot_' . $botId;
+            $client = TelegramClient::create($API_ID, $API_HASH, $sname);
+            try {
+                $client->start(botToken: trim($token));
+            } catch (\Throwable $e) {
+                die(C_RED . "[ERROR] Login bot gagal: " . $e->getMessage() . "\n" . C_RESET);
+            }
+            break;
+
+        case '0':
+        default:
+            die(C_GRAY . "  Keluar.\n" . C_RESET);
     }
 }
 
@@ -1902,7 +1988,7 @@ while (true) {
     echo C_CYAN . str_repeat('═', 60) . C_RESET . "\n\n";
 
     switch (inp("Pilih menu: ")) {
-        case '1': menu_akun($client, $sessionsDir, $sessionFile ?? ''); break;
+        case '1': menu_akun($client, $sessionsDir, $chosenFile ?? ''); break;
         case '2': menu_pesan($client);                           break;
         case '3': menu_media($client, $ASSET_PHOTO, $ASSET_DOC, $ASSET_AUDIO); break;
         case '4': menu_kontak($client);                          break;
